@@ -3,6 +3,7 @@ package msgraph
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -122,3 +123,41 @@ func (f unmarshalerFunc) Unmarshal(b []byte) error { return f(b) }
 
 func cacheHintsExport() cache.ExportHints   { return cache.ExportHints{} }
 func cacheHintsReplace() cache.ReplaceHints { return cache.ReplaceHints{} }
+
+func TestAuthorizeURL(t *testing.T) {
+	acct := &auth.Account{Alias: "work", Mode: policy.ModeDraft, TenantID: "97acb66e-0e4a-4325-a2f0-76b5ea22b8d2", ClientID: "ad23d4f7-ab01-4825-93d6-ff2be487f96d"}
+	raw := authorizeURL(acct)("http://localhost:51234/callback", "st", "ch")
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Host != "login.microsoftonline.com" || u.Path != "/97acb66e-0e4a-4325-a2f0-76b5ea22b8d2/oauth2/v2.0/authorize" {
+		t.Fatalf("endpoint: %s", raw)
+	}
+	q := u.Query()
+	want := map[string]string{
+		"client_id": acct.ClientID, "response_type": "code", "response_mode": "query",
+		"redirect_uri": "http://localhost:51234/callback", "state": "st",
+		"code_challenge": "ch", "code_challenge_method": "S256",
+		"scope": "openid profile User.Read Mail.Read offline_access Mail.ReadWrite",
+	}
+	for k, v := range want {
+		if q.Get(k) != v {
+			t.Errorf("%s = %q, want %q", k, q.Get(k), v)
+		}
+	}
+	if strings.Contains(raw, "+") || strings.Contains(q.Get("scope"), "Mail.Send") {
+		t.Fatalf("url: %s", raw)
+	}
+}
+
+func TestLoginRejectsBadFlows(t *testing.T) {
+	store := &auth.Store{Dir: t.TempDir()}
+	acct := &auth.Account{Alias: "work", Mode: policy.ModeDraft, ClientID: "c"}
+	if _, err := Login(ctx, LoginParams{Store: store, Account: acct, Flow: "implicit"}); errs.ExitCode(err) != errs.ExitUsage {
+		t.Fatalf("flow: %v", err)
+	}
+	if _, err := Login(ctx, LoginParams{Store: store, Account: acct, Flow: FlowDevice, Manual: true}); errs.ExitCode(err) != errs.ExitUsage {
+		t.Fatalf("device+manual: %v", err)
+	}
+}

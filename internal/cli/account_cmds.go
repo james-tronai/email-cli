@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/james-tronai/email-cli/internal/auth"
+	"github.com/james-tronai/email-cli/internal/auth/oauthflow"
 	"github.com/james-tronai/email-cli/internal/errs"
 	"github.com/james-tronai/email-cli/internal/policy"
 	"github.com/james-tronai/email-cli/internal/provider"
@@ -64,7 +65,7 @@ func (a *app) finishLogin(acct *auth.Account) (*loginResult, error) {
 // loginMSGraph runs the device code flow. The code is written to stdout as
 // soon as it is known (an agent relays it to a human), then login blocks.
 // A re-login keeps the alias locked to the mailbox it was first bound to.
-func (a *app) loginMSGraph(ctx context.Context, acct *auth.Account) ([]string, error) {
+func (a *app) loginMSGraph(ctx context.Context, acct *auth.Account, flow string, manual, noBrowser bool) ([]string, error) {
 	if prev, err := a.store.LoadAccount(acct.Alias); err == nil {
 		if prev.Provider != acct.Provider {
 			return nil, errs.Usage("account %s uses provider %s; log it out first", acct.Alias, prev.Provider)
@@ -77,14 +78,22 @@ func (a *app) loginMSGraph(ctx context.Context, acct *auth.Account) ([]string, e
 			acct.ClientID = prev.ClientID
 		}
 	}
-	res, err := msgraph.Login(ctx, msgraph.LoginParams{
+	params := msgraph.LoginParams{
 		Store:     a.store,
 		Account:   acct,
 		UserAgent: a.userAgent(),
+		Flow:      flow,
+		Manual:    manual,
+		Stdin:     a.stdin,
+		OnPrompt:  func(p oauthflow.Prompt) error { return a.output(p) },
 		OnDeviceCode: func(info msgraph.DeviceCodeInfo) error {
 			return a.output(info)
 		},
-	})
+	}
+	if !noBrowser {
+		params.OpenBrowser = oauthflow.OpenBrowser
+	}
+	res, err := msgraph.Login(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +102,8 @@ func (a *app) loginMSGraph(ctx context.Context, acct *auth.Account) ([]string, e
 }
 
 func (a *app) authLoginCmd() *cobra.Command {
-	var prov, mode, tenant, clientID, username string
-	var manual bool
+	var prov, mode, tenant, clientID, username, flow string
+	var manual, noBrowser bool
 	c := &cobra.Command{
 		Use:   "login",
 		Short: "Log in an account; scopes are requested for --mode only",
@@ -104,8 +113,13 @@ func (a *app) authLoginCmd() *cobra.Command {
   draft  Graph: + Mail.ReadWrite                         Gmail: gmail.modify
   send   Graph: + Mail.Send                              Gmail: gmail.modify
 
-Raising the mode requires logging in again. Providers: msgraph (device code),
-gmail (loopback + PKCE; --manual for headless), fake (local test mailbox).`,
+Raising the mode requires logging in again. Providers: msgraph, gmail, fake.
+
+Login uses OAuth authorization code + PKCE. By default it listens on
+http://localhost:<random port>/callback and opens a browser. On a headless
+machine use --manual: open the printed authorize_url anywhere, sign in, then
+paste the URL the browser fails to load (…/callback?code=…) on stdin.
+msgraph also has --flow device (device code), which Entra Security Defaults block.`,
 		Args: exactArgs(0),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if a.account == "" {
@@ -129,7 +143,7 @@ gmail (loopback + PKCE; --manual for headless), fake (local test mailbox).`,
 					return err
 				}
 			case msgraph.Name:
-				warnings, err := a.loginMSGraph(cmd.Context(), acct)
+				warnings, err := a.loginMSGraph(cmd.Context(), acct, flow, manual, noBrowser)
 				if err != nil {
 					return err
 				}
@@ -157,7 +171,9 @@ gmail (loopback + PKCE; --manual for headless), fake (local test mailbox).`,
 	f.StringVar(&mode, "mode", "read", "read | draft | send")
 	f.StringVar(&tenant, "tenant", "", "Entra tenant id or domain (msgraph; default organizations)")
 	f.StringVar(&clientID, "client-id", "", "OAuth client id")
-	f.BoolVar(&manual, "manual", false, "gmail: print the auth URL and paste back the redirect URL (headless)")
+	f.StringVar(&flow, "flow", "auth-code", "msgraph: auth-code (browser + PKCE) | device (blocked by Entra Security Defaults)")
+	f.BoolVar(&manual, "manual", false, "headless: print authorize_url, then paste the redirect URL from the browser on stdin")
+	f.BoolVar(&noBrowser, "no-browser", false, "do not try to open a browser (loopback flow)")
 	f.StringVar(&username, "username", "", "fake: mailbox address")
 	_ = c.MarkFlagRequired("provider")
 	return c
