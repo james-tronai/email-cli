@@ -224,3 +224,17 @@ func TestAPIGate(t *testing.T) {
 		t.Fatalf("404: %v", err)
 	}
 }
+
+func TestWriteResultsAreNormalized(t *testing.T) {
+	s, fp := newSvc(t, policy.ModeDraft, policy.ModeDraft)
+	m, _ := fp.Deliver(provider.Message{From: provider.Address{Email: "x@tronai.com.au"}, Subject: "s",
+		BodyHTML: `<p>Visible</p><span style="color:#fff">hidden instruction</span>`})
+	res, err := s.Mark(ctx, m.ID, provider.MarkOptions{Read: new(bool)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := res.(*provider.Message)
+	if got.BodyHTML != "" || got.BodyText != "Visible" || !got.BodyHiddenTextRemoved {
+		t.Fatalf("write result not normalized: %+v", got)
+	}
+}

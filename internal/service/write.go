@@ -46,7 +46,7 @@ func (s *Service) CreateDraft(ctx context.Context, in provider.DraftInput) (any,
 	}
 	m, err := dr.CreateDraft(ctx, in)
 	s.done(policy.OpDraftCreate, "", rcpt, msgID(m), err)
-	return m, err
+	return normalized(m, err)
 }
 
 func (s *Service) ReplyDraft(ctx context.Context, in provider.ReplyInput) (any, error) {
@@ -68,7 +68,7 @@ func (s *Service) ReplyDraft(ctx context.Context, in provider.ReplyInput) (any, 
 		rcpt = emails(m.To, m.Cc, m.Bcc)
 	}
 	s.done(policy.OpDraftReply, in.MessageID, rcpt, msgID(m), err)
-	return m, err
+	return normalized(m, err)
 }
 
 func (s *Service) ForwardDraft(ctx context.Context, in provider.ForwardInput) (any, error) {
@@ -90,7 +90,7 @@ func (s *Service) ForwardDraft(ctx context.Context, in provider.ForwardInput) (a
 	}
 	m, err := dr.CreateForwardDraft(ctx, in)
 	s.done(policy.OpDraftForward, in.MessageID, rcpt, msgID(m), err)
-	return m, err
+	return normalized(m, err)
 }
 
 func (s *Service) UpdateDraft(ctx context.Context, id string, u provider.DraftUpdate) (any, error) {
@@ -117,7 +117,7 @@ func (s *Service) UpdateDraft(ctx context.Context, id string, u provider.DraftUp
 	}
 	m, err := dr.UpdateDraft(ctx, id, u)
 	s.done(policy.OpDraftUpdate, id, rcpt, msgID(m), err)
-	return m, err
+	return normalized(m, err)
 }
 
 func (s *Service) ListDrafts(ctx context.Context, o provider.ListOptions) (*provider.Page, error) {
@@ -175,7 +175,7 @@ func (s *Service) Move(ctx context.Context, id, dest string) (any, error) {
 	}
 	m, err := mv.Move(ctx, id, dest)
 	s.done(policy.OpMove, id, nil, dest, err)
-	return m, err
+	return normalized(m, err)
 }
 
 func (s *Service) Label(ctx context.Context, id string, add, remove []string) (any, error) {
@@ -195,7 +195,7 @@ func (s *Service) Label(ctx context.Context, id string, add, remove []string) (a
 	}
 	m, err := mv.Relabel(ctx, id, add, remove)
 	s.done(policy.OpLabel, id, nil, "", err)
-	return m, err
+	return normalized(m, err)
 }
 
 func (s *Service) Mark(ctx context.Context, id string, o provider.MarkOptions) (any, error) {
@@ -215,7 +215,7 @@ func (s *Service) Mark(ctx context.Context, id string, o provider.MarkOptions) (
 	}
 	m, err := mv.Mark(ctx, id, o)
 	s.done(policy.OpMark, id, nil, "", err)
-	return m, err
+	return normalized(m, err)
 }
 
 // ---- send (M4) ----
@@ -290,6 +290,17 @@ func (s *Service) Sync(ctx context.Context, label, stateFile string) (*SyncOutpu
 		msgs = []provider.Message{}
 	}
 	return &SyncOutput{Account: s.Account.Alias, Label: label, Initialized: res.Initialized, StateFile: stateFile, Messages: msgs}, nil
+}
+
+// normalized cleans a message returned by a write the same way as `get`
+// (HTML → sanitized text, no raw HTML, truncation), so a reply draft's
+// quoted HTML never reaches the caller unsanitized.
+func normalized(m *provider.Message, err error) (any, error) {
+	if err != nil || m == nil {
+		return nil, err
+	}
+	NormalizeBody(m, false, DefaultMaxBody)
+	return m, nil
 }
 
 func msgID(m *provider.Message) string {
