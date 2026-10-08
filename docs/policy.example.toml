@@ -1,0 +1,17 @@
+# email policy. Written by the deployer, read-only to the agent.
+# Location: $EMAIL_POLICY_FILE, else ~/.config/email/policy.toml.
+# A missing file means mode = "read". A file with unknown keys is rejected.
+
+[default]
+mode = "draft"              # read | draft | send (capped by the mode the account logged in with)
+# Appended to every body the agent writes. Omit for the built-in signoff; "" disables.
+signoff = "\n\n-- \nSent by James's assistant (automated)"
+
+[send]                      # recipient rules; block_external_forward also applies to draft forward
+allowed_recipient_domains = ["tronai.com.au"]   # empty = only the mailbox's own domain counts as internal
+max_recipients = 5
+block_external_forward = true
+require_reply_context = true
+
+[delete]
+enabled = false             # blocks move/label to trash and DELETE via `email api`

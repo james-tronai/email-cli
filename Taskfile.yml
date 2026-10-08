@@ -1,0 +1,17 @@
+version: "3"
+tasks:
+  build:
+    cmds:
+      - CGO_ENABLED=0 go build -ldflags "-s -w -X main.version={{.VERSION}}" -o email ./cmd/email
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  test:
+    cmds:
+      - go test -race -count=1 ./...
+  lint:
+    cmds:
+      - test -z "$(gofmt -l .)"
+      - go vet ./...
+  check:
+    deps: [lint, test]
