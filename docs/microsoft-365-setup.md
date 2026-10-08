@@ -1,6 +1,10 @@
 # Microsoft 365 setup
 
-`email` uses Microsoft Graph with **delegated** permissions and the **device code** flow: it acts as one signed-in user and never holds a client secret. Setup has two parts: register an app in Entra once per tenant, then log in once per mailbox.
+`email` uses Microsoft Graph with **delegated** permissions. It acts as one signed-in user and never holds a client secret.
+
+Login uses OAuth 2.0 **authorization code + PKCE** with a `http://localhost:<port>/callback` redirect. The device code flow is still available as `--flow device`, but it is not the default: Entra **Security Defaults block device code sign-in** (`AADSTS530035`), and turning Security Defaults off is not an option in a tenant without Conditional Access.
+
+Setup has two parts: register an app in Entra once per tenant, then log in once per mailbox.
 
 ## 1. Register the app in Entra (once per tenant)
 
@@ -15,8 +19,10 @@ You need an account that can register applications in the tenant (by default any
 3. On the app's **Overview** page, copy:
    - **Application (client) ID** → `--client-id`
    - **Directory (tenant) ID** → `--tenant`
-4. **Authentication** → **Add a platform** → **Mobile and desktop applications** → tick `https://login.microsoftonline.com/common/oauth2/nativeclient` → **Configure**.
-5. Still on **Authentication**, under **Advanced settings**, set **Allow public client flows** to **Yes**. Save. Without this, login fails with `AADSTS7000218`.
+4. **Authentication** → **Add a platform** → **Mobile and desktop applications**. Add these custom redirect URIs, then click **Configure**:
+   - `http://localhost/callback` (what `email` sends; for `localhost`, Entra accepts any port but compares the path)
+   - `http://localhost`
+5. Still on **Authentication**, under **Advanced settings**, set **Allow public client flows** to **Yes** and save. Without it, the token exchange fails with `AADSTS7000218` ("client_assertion or client_secret required").
 6. **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**. Add:
 
    | Permission | Needed for |
@@ -32,11 +38,24 @@ You need an account that can register applications in the tenant (by default any
 
 There is no client secret and no certificate. Keep **Certificates & secrets** empty.
 
-## 2. Log in a mailbox
+### The tronai.com.au registration
+
+The app for hermes-james is already registered. Neither ID is secret:
+
+| | |
+| --- | --- |
+| App name | `email-cli` (hermes-james) |
+| Directory (tenant) ID | `97acb66e-0e4a-4325-a2f0-76b5ea22b8d2` (tronai.com.au, single tenant) |
+| Application (client) ID | `ad23d4f7-ab01-4825-93d6-ff2be487f96d` |
+| Object ID | `3812590a-eb93-409f-ac60-2c9265fd0ab8` |
+| Delegated permissions | `User.Read`, `Mail.Read`, `Mail.ReadWrite`, `offline_access` (admin consented; no `Mail.Send`) |
+
+## 2. Log in a mailbox (machine with a browser)
 
 ```sh
 email auth login -a work --provider msgraph --mode draft \
-  --tenant <directory-tenant-id> --client-id <application-client-id>
+  --tenant 97acb66e-0e4a-4325-a2f0-76b5ea22b8d2 \
+  --client-id ad23d4f7-ab01-4825-93d6-ff2be487f96d
 ```
 
 - `-a work` is the local alias. Pass it later with `-a`, or rely on `default_account`. The first account becomes the default.
@@ -44,18 +63,18 @@ email auth login -a work --provider msgraph --mode draft \
 - `--tenant` defaults to `organizations` (any work or school account). `common` and `consumers` are refused: personal Microsoft accounts are not supported.
 - `--tenant` and `--client-id` are saved in `account.json`, so a later re-login only needs `-a work --provider msgraph --mode …`.
 
-The command prints the device code to **stdout** at once, then waits (up to 15 minutes):
+The command listens on `http://localhost:<random port>/callback`, opens the browser (skip that with `--no-browser`) and prints:
 
 ```json
 {
-  "verification_uri": "https://microsoft.com/devicelogin",
-  "user_code": "ABCD-EFGH",
-  "expires_in": 899,
-  "message": "To sign in, use a web browser to open the page https://microsoft.com/devicelogin and enter the code ABCD-EFGH to authenticate."
+  "mode": "loopback",
+  "authorize_url": "https://login.microsoftonline.com/97acb66e-…/oauth2/v2.0/authorize?client_id=…&code_challenge=…",
+  "redirect_uri": "http://localhost:51234/callback",
+  "instructions": "Sign in in the browser window that opened (or open authorize_url on this machine). Waiting for the redirect…"
 }
 ```
 
-Open the URL in any browser, on any device, enter the code and sign in as the mailbox owner. When the browser says you can close the window, the command prints the result:
+Sign in as the mailbox owner, MFA included. The browser lands on a "Signed in" page and the command prints the result:
 
 ```json
 {
@@ -78,20 +97,31 @@ email capabilities -a work
 email list -a work --limit 5 --format text
 ```
 
-## 3. Headless login (Kubernetes / kubectl exec)
+## 3. Headless login (`--manual`, e.g. kubectl exec)
 
-The device code goes to stdout as JSON, so whoever runs the command (a person or an agent) can relay it:
+When the CLI runs where no browser can reach its loopback port (a Pod, an SSH session), add `--manual`. The browser can be anywhere: the owner's laptop or phone.
 
 ```sh
-kubectl -n hermes exec deploy/hermes-james -c hermes -- \
-  email auth login -a work --provider msgraph --mode draft \
-    --tenant <tenant-id> --client-id <client-id>
+kubectl -n hermes exec -i deploy/hermes-james -c hermes -- \
+  email auth login -a work --provider msgraph --mode draft --manual \
+    --tenant 97acb66e-0e4a-4325-a2f0-76b5ea22b8d2 \
+    --client-id ad23d4f7-ab01-4825-93d6-ff2be487f96d
 ```
 
-- No `-it` is needed: nothing is read from stdin.
-- Send the `verification_uri` and `user_code` to the mailbox owner (for example in a Discord DM). The owner signs in from their phone or laptop. The `exec` session must stay open until the result JSON appears (at most 15 minutes, the code's lifetime).
-- To print only the code line: add `--jq 'select(.user_code) | "\(.verification_uri) \(.user_code)"'`.
-- Tokens land in `$EMAIL_CONFIG_DIR/accounts/work/msal.json` (mode 0600; the directory is 0700). In the Pod that is the PVC (`/opt/data/.config/email/`), so they survive restarts.
+1. The command prints a JSON prompt with `"mode": "manual"`, an `authorize_url` and a `redirect_uri` (`http://localhost:<port>/callback`), then waits for one line on stdin. `-i` is required so stdin reaches it.
+2. Send `authorize_url` to the mailbox owner (for example in a Discord DM). To print only the URL, add `--jq 'select(.authorize_url) | .authorize_url'`.
+3. The owner opens the URL in any browser and signs in.
+4. The browser is then redirected to `http://localhost:<port>/callback?code=…&state=…`. **Nothing listens there, so the page fails to load. That is expected.**
+5. The owner copies the **entire URL from the address bar**. It contains the one-time code, valid for a few minutes.
+6. Paste that URL into the waiting command and press Enter.
+
+The CLI checks `state` (so a URL from another login attempt is rejected), exchanges the code with the PKCE verifier and prints the result JSON above. The code can be used once, and only together with the verifier held by this process. Even so, send the pasted URL only over a private channel.
+
+Tokens land in `$EMAIL_CONFIG_DIR/accounts/work/msal.json` (mode 0600; the directory is 0700). In the Pod that is the PVC (`/opt/data/.config/email/`), so they survive restarts.
+
+### Device code (`--flow device`)
+
+`--flow device` prints `verification_uri` and `user_code` instead. It only works in tenants that do not block device code sign-in. tronai.com.au uses Security Defaults, which block it (`AADSTS530035`).
 
 ## Staying logged in
 
@@ -108,9 +138,13 @@ kubectl -n hermes exec deploy/hermes-james -c hermes -- \
 
 | Error | Cause / fix |
 | --- | --- |
+| `AADSTS50011` (redirect URI mismatch) after signing in | `http://localhost/callback` is not registered under **Mobile and desktop applications** (step 4). |
 | `AADSTS7000218` (client_assertion or client_secret required) | **Allow public client flows** is off (step 5). |
+| `AADSTS530035` (blocked by security defaults) | You used `--flow device`. Use the default auth code flow. |
 | `AADSTS700016` / `AADSTS700038` | Wrong `--client-id`, or the app is registered in another tenant than `--tenant`. |
 | `AADSTS65001` (consent required) | User consent is disabled in the tenant; an admin must click **Grant admin consent** (step 7). |
 | `AADSTS50020` | The user is not in this tenant (single-tenant app). |
+| `state mismatch` (exit 3) | The pasted URL belongs to an earlier login attempt. Start again and paste the newest URL. |
+| `code redemption failed … invalid_grant` | The code expired or was already used (it is valid for a few minutes). Run login again. |
 | `ErrorAccessDenied` (exit 5) on draft commands | The account was logged in with `--mode read`; log in again with `--mode draft`. |
 | login warning about `Mail.Send` | Remove `Mail.Send` from the app's API permissions (and revoke consent) to keep draft mode unable to send. |
