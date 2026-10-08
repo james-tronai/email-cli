@@ -2,7 +2,7 @@
 
 A multi-account mail CLI for self-hosted agents. The agent gets least-privilege, audited access and works in draft-only mode by default. Output is JSON, and the CLI never prompts.
 
-Status: **M1 (skeleton)**. Policy gate, audit log, rendering and the `fake` provider work. Microsoft 365 (M2) and Gmail (M3) are next. Send is planned for M4.
+Status: **M2**. Microsoft 365 (Graph) read + draft works: device-code login, list, search, get, thread, attachments, drafts (create/reply/forward/update/delete), move, categories, mark and delta sync. Setup steps are in [docs/microsoft-365-setup.md](docs/microsoft-365-setup.md). Gmail is M3; send is M4.
 
 ## Quick try (fake mailbox)
 
