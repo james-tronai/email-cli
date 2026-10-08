@@ -21,6 +21,7 @@ import (
 	"github.com/james-tronai/email-cli/internal/policy"
 	"github.com/james-tronai/email-cli/internal/provider"
 	"github.com/james-tronai/email-cli/internal/provider/fake"
+	"github.com/james-tronai/email-cli/internal/provider/msgraph"
 	"github.com/james-tronai/email-cli/internal/render"
 	"github.com/james-tronai/email-cli/internal/service"
 )
@@ -112,8 +113,12 @@ Exit codes: 0 ok, 2 usage, 3 auth required, 4 policy denied, 5 provider error, 6
 			}
 			a.store = &auth.Store{Dir: auth.DefaultConfigDir()}
 			a.stateDir = audit.DefaultStateDir()
-			if a.timeout > 0 {
-				ctx, cancel := context.WithTimeout(cmd.Context(), a.timeout)
+			timeout := a.timeout
+			if cmd.Name() == "login" && !cmd.Flags().Changed("timeout") {
+				timeout = 15 * time.Minute // device code lifetime
+			}
+			if timeout > 0 {
+				ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 				a.cancel = cancel
 				cmd.SetContext(ctx)
 			}
@@ -151,6 +156,8 @@ Exit codes: 0 ok, 2 usage, 3 auth required, 4 policy denied, 5 provider error, 6
 	)
 	return root
 }
+
+func (a *app) userAgent() string { return "email-cli/" + a.build.Version }
 
 func (a *app) output(v any) error {
 	if a.quiet {
@@ -205,7 +212,19 @@ func (a *app) openProvider(_ context.Context, acct *auth.Account) (provider.Prov
 			return nil, err
 		}
 		return p, nil
-	case "msgraph", "gmail":
+	case msgraph.Name:
+		ts, err := msgraph.NewTokenSource(a.store, acct, nil)
+		if err != nil {
+			return nil, err
+		}
+		return msgraph.New(msgraph.Config{
+			Alias:           acct.Alias,
+			Username:        acct.Username,
+			Tokens:          ts,
+			UserAgent:       a.userAgent(),
+			FolderCachePath: filepath.Join(a.store.AccountDir(acct.Alias), "msgraph-folders.json"),
+		})
+	case "gmail":
 		return nil, errs.Unsupported("provider %s is not implemented yet", acct.Provider)
 	}
 	return nil, errs.Usage("unknown provider %q", acct.Provider)

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/james-tronai/email-cli/internal/policy"
 	"github.com/james-tronai/email-cli/internal/provider"
 	"github.com/james-tronai/email-cli/internal/provider/fake"
+	"github.com/james-tronai/email-cli/internal/provider/msgraph"
 )
 
 func (a *app) versionCmd() *cobra.Command {
@@ -37,6 +39,57 @@ type loginResult struct {
 	Username string      `json:"username"`
 	Scopes   []string    `json:"scopes,omitempty"`
 	Default  bool        `json:"default"`
+	Warnings []string    `json:"warnings,omitempty"`
+}
+
+// finishLogin saves the account and makes it the default if there is none.
+func (a *app) finishLogin(acct *auth.Account) (*loginResult, error) {
+	if err := a.store.SaveAccount(acct); err != nil {
+		return nil, err
+	}
+	cfg, err := a.store.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+	isDefault := cfg.DefaultAccount == acct.Alias
+	if cfg.DefaultAccount == "" {
+		cfg.DefaultAccount, isDefault = acct.Alias, true
+		if err := a.store.SaveConfig(cfg); err != nil {
+			return nil, err
+		}
+	}
+	return &loginResult{Account: acct.Alias, Provider: acct.Provider, Mode: acct.Mode, Username: acct.Username, Scopes: acct.Scopes, Default: isDefault}, nil
+}
+
+// loginMSGraph runs the device code flow. The code is written to stdout as
+// soon as it is known (an agent relays it to a human), then login blocks.
+// A re-login keeps the alias locked to the mailbox it was first bound to.
+func (a *app) loginMSGraph(ctx context.Context, acct *auth.Account) ([]string, error) {
+	if prev, err := a.store.LoadAccount(acct.Alias); err == nil {
+		if prev.Provider != acct.Provider {
+			return nil, errs.Usage("account %s uses provider %s; log it out first", acct.Alias, prev.Provider)
+		}
+		acct.Username, acct.CreatedAt = prev.Username, prev.CreatedAt
+		if acct.TenantID == "" {
+			acct.TenantID = prev.TenantID
+		}
+		if acct.ClientID == "" {
+			acct.ClientID = prev.ClientID
+		}
+	}
+	res, err := msgraph.Login(ctx, msgraph.LoginParams{
+		Store:     a.store,
+		Account:   acct,
+		UserAgent: a.userAgent(),
+		OnDeviceCode: func(info msgraph.DeviceCodeInfo) error {
+			return a.output(info)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	acct.Username, acct.HomeAccountID, acct.Scopes = res.Username, res.HomeAccountID, msgraph.Scopes(acct.Mode)
+	return res.Warnings, nil
 }
 
 func (a *app) authLoginCmd() *cobra.Command {
@@ -75,33 +128,34 @@ gmail (loopback + PKCE; --manual for headless), fake (local test mailbox).`,
 				if err := a.seedFake(acct); err != nil {
 					return err
 				}
-			case "msgraph", "gmail":
+			case msgraph.Name:
+				warnings, err := a.loginMSGraph(cmd.Context(), acct)
+				if err != nil {
+					return err
+				}
+				res, err := a.finishLogin(acct)
+				if err != nil {
+					return err
+				}
+				res.Warnings = warnings
+				return a.output(res)
+			case "gmail":
 				_ = manual
 				return errs.Unsupported("provider %s is not implemented yet", prov)
 			default:
 				return errs.Usage("unknown --provider %q (want msgraph, gmail or fake)", prov)
 			}
-			if err := a.store.SaveAccount(acct); err != nil {
-				return err
-			}
-			cfg, err := a.store.LoadConfig()
+			res, err := a.finishLogin(acct)
 			if err != nil {
 				return err
 			}
-			isDefault := cfg.DefaultAccount == a.account
-			if cfg.DefaultAccount == "" {
-				cfg.DefaultAccount, isDefault = a.account, true
-				if err := a.store.SaveConfig(cfg); err != nil {
-					return err
-				}
-			}
-			return a.output(&loginResult{Account: acct.Alias, Provider: acct.Provider, Mode: acct.Mode, Username: acct.Username, Scopes: acct.Scopes, Default: isDefault})
+			return a.output(res)
 		},
 	}
 	f := c.Flags()
 	f.StringVar(&prov, "provider", "", "msgraph | gmail | fake")
 	f.StringVar(&mode, "mode", "read", "read | draft | send")
-	f.StringVar(&tenant, "tenant", "", "Entra tenant id (msgraph)")
+	f.StringVar(&tenant, "tenant", "", "Entra tenant id or domain (msgraph; default organizations)")
 	f.StringVar(&clientID, "client-id", "", "OAuth client id")
 	f.BoolVar(&manual, "manual", false, "gmail: print the auth URL and paste back the redirect URL (headless)")
 	f.StringVar(&username, "username", "", "fake: mailbox address")
