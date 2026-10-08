@@ -237,6 +237,12 @@ func exactArgs(n int, names ...string) cobra.PositionalArgs {
 		if len(args) != n {
 			return errs.Usage("expected %d argument(s): %s", n, strings.Join(names, " "))
 		}
+		// An empty id would turn GET /me/messages/<id> into GET /me/messages/.
+		for i, a := range args {
+			if strings.TrimSpace(a) == "" {
+				return errs.Usage("argument %s is empty", names[i])
+			}
+		}
 		return nil
 	}
 }

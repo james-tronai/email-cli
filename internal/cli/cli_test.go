@@ -66,6 +66,9 @@ const draftPolicy = "[default]\nmode = \"draft\"\n"
 func TestExitCodes(t *testing.T) {
 	e := newEnv(t, draftPolicy)
 	e.code(2, "get")
+	e.code(2, "get", "")
+	e.code(2, "draft", "delete", " ")
+	e.code(2, "attachments", "list", "")
 	e.code(2, "list", "--bogus")
 	e.code(2, "nonsense")
 	e.code(2, "list", "--format", "xml")
