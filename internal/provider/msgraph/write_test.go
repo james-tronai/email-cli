@@ -23,6 +23,9 @@ func TestCreateReplyAllUsesComment(t *testing.T) {
 	if body["comment"] != "Thanks Alice" || len(body) != 1 {
 		t.Fatalf("request body: %v", body)
 	}
+	if !strings.Contains(m.WebLink, "ItemID=AAMkAD-draft-9") {
+		t.Fatalf("reply draft webLink: %q", m.WebLink)
+	}
 	if !m.Flags.Draft || m.ID != "AAMkAD-draft-9" || m.Labels[0] != "drafts" || m.Cc[0].Email != "bob@tronai.example" {
 		t.Fatalf("draft: %+v", m)
 	}

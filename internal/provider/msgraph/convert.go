@@ -10,7 +10,7 @@ import (
 
 // Fields fetched for list/search/sync (no body).
 const listSelect = "id,conversationId,subject,bodyPreview,from,toRecipients,ccRecipients,replyTo," +
-	"receivedDateTime,isRead,isDraft,flag,hasAttachments,categories,parentFolderId"
+	"receivedDateTime,isRead,isDraft,flag,hasAttachments,categories,parentFolderId,webLink"
 
 // Fields fetched for get/thread.
 const getSelect = listSelect + ",bccRecipients,body,internetMessageId"
@@ -42,6 +42,7 @@ type gMessage struct {
 	HasAttachments         bool     `json:"hasAttachments"`
 	Categories             []string `json:"categories"`
 	ParentFolderID         string   `json:"parentFolderId"`
+	WebLink                string   `json:"webLink"`
 	InternetMessageID      string   `json:"internetMessageId"`
 	InternetMessageHeaders []struct {
 		Name  string `json:"name"`
@@ -112,6 +113,7 @@ func (p *Provider) convert(g *gMessage, folderLabel string) provider.Message {
 		Date:     g.ReceivedDateTime,
 		Subject:  g.Subject,
 		Snippet:  snippet(g.BodyPreview),
+		WebLink:  g.WebLink, // for a draft this opens the compose view in Outlook on the web
 		Flags: provider.Flags{
 			Unread:         !g.IsRead,
 			Draft:          g.IsDraft,

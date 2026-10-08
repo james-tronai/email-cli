@@ -185,6 +185,9 @@ func MessageText(w io.Writer, m *provider.Message) error {
 	}
 	fmt.Fprintf(w, "date: %s\n", m.Date.Format(time.RFC3339))
 	fmt.Fprintf(w, "subject: %s\n", Clean(m.Subject))
+	if m.WebLink != "" {
+		fmt.Fprintf(w, "link: %s\n", Clean(m.WebLink))
+	}
 	if len(m.Labels) > 0 {
 		fmt.Fprintf(w, "labels: %s\n", Clean(strings.Join(m.Labels, ", ")))
 	}

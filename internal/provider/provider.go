@@ -7,6 +7,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -96,6 +97,9 @@ type Message struct {
 	Labels      []string          `json:"labels,omitempty"`
 	Flags       Flags             `json:"flags"`
 	Headers     map[string]string `json:"headers,omitempty"`
+	// WebLink opens the message in the provider's web client (for a draft,
+	// in the compose/edit view). Empty when the provider has none.
+	WebLink string `json:"web_link,omitempty"`
 
 	// Set by the service layer.
 	BodyHiddenTextRemoved bool `json:"body_hidden_text_removed,omitempty"`
@@ -106,6 +110,16 @@ type Message struct {
 type Page struct {
 	Messages   []Message `json:"messages"`
 	NextCursor string    `json:"next_cursor,omitempty"`
+}
+
+// MarshalJSON adds has_more so a caller that asked for N messages and got N
+// can tell whether more exist without inspecting next_cursor.
+func (p Page) MarshalJSON() ([]byte, error) {
+	type plain Page
+	return json.Marshal(struct {
+		plain
+		HasMore bool `json:"has_more"`
+	}{plain(p), p.NextCursor != ""})
 }
 
 type ListOptions struct {

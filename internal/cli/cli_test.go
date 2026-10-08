@@ -161,3 +161,27 @@ func TestLogout(t *testing.T) {
 	e.ok("auth", "logout", "-a", "demo")
 	e.code(3, "list")
 }
+
+func TestWriteResultsCarryTopLevelWebLink(t *testing.T) {
+	e := newEnv(t, draftPolicy)
+	for _, args := range [][]string{
+		{"draft", "create", "--to", "a@tronai.com.au", "--subject", "s", "--body", "x"},
+		{"draft", "reply", "fake-0001", "--body", "x"},
+		{"draft", "forward", "fake-0001", "--to", "colleague@tronai.com.au"},
+	} {
+		out := strings.TrimSpace(e.ok(append(args, "--jq", ".web_link")...))
+		if !strings.HasPrefix(out, "https://mail.example.test/#/fake-") {
+			t.Errorf("%v: web_link %q", args, out)
+		}
+	}
+	id := strings.TrimSpace(e.ok("draft", "list", "--jq", ".messages[0].id"))
+	if out := strings.TrimSpace(e.ok("draft", "update", id, "--subject", "t", "--jq", ".web_link")); out == "" || out == "null" {
+		t.Errorf("update web_link: %q", out)
+	}
+	if out := strings.TrimSpace(e.ok("list", "--limit", "1", "--jq", ".has_more")); out != "true" {
+		t.Errorf("has_more: %q", out)
+	}
+	if out := strings.TrimSpace(e.ok("list", "--limit", "50", "--jq", ".has_more")); out != "false" {
+		t.Errorf("has_more (all fit): %q", out)
+	}
+}

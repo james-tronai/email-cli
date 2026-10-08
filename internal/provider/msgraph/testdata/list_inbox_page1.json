@@ -6,17 +6,34 @@
       "conversationId": "AAQkAD-conv-1",
       "subject": "Re: Quarterly numbers",
       "bodyPreview": "Looks good to me.",
-      "from": {"emailAddress": {"name": "Alice Example", "address": "alice@contoso.example"}},
-      "toRecipients": [{"emailAddress": {"name": "James", "address": "james@tronai.example"}}],
+      "from": {
+        "emailAddress": {
+          "name": "Alice Example",
+          "address": "alice@contoso.example"
+        }
+      },
+      "toRecipients": [
+        {
+          "emailAddress": {
+            "name": "James",
+            "address": "james@tronai.example"
+          }
+        }
+      ],
       "ccRecipients": [],
       "replyTo": [],
       "receivedDateTime": "2026-10-08T09:30:00Z",
       "isRead": false,
       "isDraft": false,
-      "flag": {"flagStatus": "flagged"},
+      "flag": {
+        "flagStatus": "flagged"
+      },
       "hasAttachments": true,
-      "categories": ["Finance"],
-      "parentFolderId": "AAMkAD-folder-inbox"
+      "categories": [
+        "Finance"
+      ],
+      "parentFolderId": "AAMkAD-folder-inbox",
+      "webLink": "https://outlook.office365.com/owa/?ItemID=AAMkAD-msg-2&exvsurl=1&viewmodel=ReadMessageItem"
     }
   ],
   "@odata.nextLink": "{{BASE}}/me/mailFolders/inbox/messages?%24select=id&%24top=1&%24skip=1"

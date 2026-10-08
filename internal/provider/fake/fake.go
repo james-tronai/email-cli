@@ -125,6 +125,7 @@ func (p *Provider) insert(m provider.Message) *storedMessage {
 	}
 	m.Provider = Name
 	m.Account = p.account
+	m.WebLink = "https://mail.example.test/#/" + m.ID
 	if m.Snippet == "" {
 		m.Snippet = snippet(m.BodyText)
 	}

@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -58,5 +59,29 @@ func TestMessageTextFencesBody(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
+	}
+}
+
+func TestPageHasMore(t *testing.T) {
+	for cursor, want := range map[string]string{"": `"has_more":false`, "c2": `"has_more":true`} {
+		b, err := json.Marshal(&provider.Page{Messages: []provider.Message{}, NextCursor: cursor})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), want) || !strings.Contains(string(b), `"messages":[]`) {
+			t.Errorf("cursor %q: %s", cursor, b)
+		}
+	}
+	var out bytes.Buffer
+	if err := Write(&out, &provider.Page{NextCursor: "c2"}, Options{Format: FormatJSON, JQ: ".has_more"}); err != nil || out.String() != "true\n" {
+		t.Fatalf("jq has_more: %q %v", out.String(), err)
+	}
+}
+
+func TestTextShowsLink(t *testing.T) {
+	var b bytes.Buffer
+	_ = Write(&b, &provider.Message{ID: "m1", Subject: "s", WebLink: "https://outlook.office365.com/owa/?ItemID=m1"}, Options{Format: FormatText})
+	if !strings.Contains(b.String(), "subject: s\nlink: https://outlook.office365.com/owa/?ItemID=m1\n") {
+		t.Fatalf("text:\n%s", b.String())
 	}
 }

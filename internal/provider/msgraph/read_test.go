@@ -51,6 +51,9 @@ func TestListPaging(t *testing.T) {
 	if m.ID != "AAMkAD-msg-2" || !m.Flags.Unread || !m.Flags.Flagged || !m.Flags.HasAttachments || m.From.Email != "alice@contoso.example" {
 		t.Fatalf("message: %+v", m)
 	}
+	if !strings.Contains(v.Get("$select"), "webLink") || !strings.HasPrefix(m.WebLink, "https://outlook.office365.com/owa/?ItemID=AAMkAD-msg-2") {
+		t.Fatalf("webLink: select=%q link=%q", v.Get("$select"), m.WebLink)
+	}
 	if strings.Join(m.Labels, ",") != "inbox,Finance" {
 		t.Fatalf("labels: %v", m.Labels)
 	}
@@ -145,6 +148,9 @@ func TestGetHTMLIsSanitizedByService(t *testing.T) {
 	}
 	if !strings.Contains(q(t, f.last().RawQuery).Get("$select"), "internetMessageHeaders") {
 		t.Fatal("--headers must select internetMessageHeaders")
+	}
+	if m.WebLink == "" || !strings.Contains(q(t, f.last().RawQuery).Get("$select"), "webLink") {
+		t.Fatalf("get webLink: %q", m.WebLink)
 	}
 	if m.BodyHTML == "" || m.BodyText != "" {
 		t.Fatalf("provider should return raw HTML: %+v", m)
