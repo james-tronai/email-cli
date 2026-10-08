@@ -1,6 +1,7 @@
 package msgraph
 
 import (
+	"net/textproto"
 	"strings"
 	"time"
 
@@ -130,14 +131,17 @@ func (p *Provider) convert(g *gMessage, folderLabel string) provider.Message {
 		}
 	}
 	if len(g.InternetMessageHeaders) > 0 || g.InternetMessageID != "" {
+		// Keys are canonical MIME form (Message-Id, In-Reply-To) so the
+		// internetMessageId property and the raw header don't both appear.
 		h := map[string]string{}
-		if g.InternetMessageID != "" {
-			h["Message-ID"] = g.InternetMessageID
-		}
 		for _, x := range g.InternetMessageHeaders {
-			if headerAllow[strings.ToLower(x.Name)] {
-				h[x.Name] = x.Value
+			k := textproto.CanonicalMIMEHeaderKey(x.Name)
+			if _, dup := h[k]; !dup && headerAllow[strings.ToLower(x.Name)] {
+				h[k] = x.Value
 			}
+		}
+		if g.InternetMessageID != "" {
+			h["Message-Id"] = g.InternetMessageID
 		}
 		m.Headers = h
 	}

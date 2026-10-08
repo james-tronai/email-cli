@@ -149,7 +149,7 @@ func TestGetHTMLIsSanitizedByService(t *testing.T) {
 	if m.BodyHTML == "" || m.BodyText != "" {
 		t.Fatalf("provider should return raw HTML: %+v", m)
 	}
-	if m.Headers["Message-ID"] != "<abc123@contoso.example>" || m.Headers["Authentication-Results"] == "" {
+	if m.Headers["Message-Id"] != "<abc123@contoso.example>" || m.Headers["Authentication-Results"] == "" || len(m.Headers) != 2 {
 		t.Fatalf("headers: %v", m.Headers)
 	}
 	if _, leaked := m.Headers["X-MS-Exchange-Organization-SCL"]; leaked {
