@@ -1,0 +1,12 @@
+{
+  "value": [
+    {
+      "id": "AAMkAD-new-2",
+      "subject": "Second new mail",
+      "receivedDateTime": "2099-01-01T00:00:09Z",
+      "isRead": true, "isDraft": false, "flag": {"flagStatus": "notFlagged"},
+      "parentFolderId": "AAMkAD-folder-inbox"
+    }
+  ],
+  "@odata.deltaLink": "{{BASE}}/me/mailFolders/inbox/messages/delta?%24deltatoken=round3"
+}

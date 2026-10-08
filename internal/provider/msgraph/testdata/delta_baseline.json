@@ -1,0 +1,4 @@
+{
+  "value": [],
+  "@odata.deltaLink": "{{BASE}}/me/mailFolders/inbox/messages/delta?%24deltatoken=round1"
+}

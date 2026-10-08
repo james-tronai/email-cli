@@ -1,0 +1,23 @@
+{
+  "value": [
+    {
+      "id": "AAMkAD-new-1",
+      "conversationId": "AAQkAD-conv-7",
+      "subject": "New invoice",
+      "bodyPreview": "Invoice attached",
+      "from": {"emailAddress": {"name": "Billing", "address": "billing@vendor.example"}},
+      "receivedDateTime": "2099-01-01T00:00:05Z",
+      "isRead": false, "isDraft": false, "flag": {"flagStatus": "notFlagged"},
+      "hasAttachments": true, "categories": [], "parentFolderId": "AAMkAD-folder-inbox"
+    },
+    {
+      "id": "AAMkAD-old-1",
+      "subject": "Old mail marked read",
+      "receivedDateTime": "2020-01-01T00:00:00Z",
+      "isRead": true, "isDraft": false, "flag": {"flagStatus": "notFlagged"},
+      "parentFolderId": "AAMkAD-folder-inbox"
+    },
+    {"id": "AAMkAD-gone-1", "@removed": {"reason": "deleted"}}
+  ],
+  "@odata.nextLink": "{{BASE}}/me/mailFolders/inbox/messages/delta?%24skiptoken=round2b"
+}

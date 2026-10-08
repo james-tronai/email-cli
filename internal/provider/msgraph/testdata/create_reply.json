@@ -1,0 +1,17 @@
+{
+  "id": "AAMkAD-draft-9",
+  "conversationId": "AAQkAD-conv-1",
+  "subject": "RE: Re: Quarterly numbers",
+  "bodyPreview": "Thanks Alice",
+  "body": {"contentType": "html", "content": "<html><body><div>Thanks Alice</div><hr><div>Looks good to me.</div></body></html>"},
+  "from": {"emailAddress": {"name": "James", "address": "james@tronai.example"}},
+  "toRecipients": [{"emailAddress": {"name": "Alice Example", "address": "alice@contoso.example"}}],
+  "ccRecipients": [{"emailAddress": {"name": "Bob", "address": "bob@tronai.example"}}],
+  "receivedDateTime": "2026-10-08T10:00:00Z",
+  "isRead": true,
+  "isDraft": true,
+  "flag": {"flagStatus": "notFlagged"},
+  "hasAttachments": false,
+  "categories": [],
+  "parentFolderId": "AAMkAD-folder-drafts"
+}
