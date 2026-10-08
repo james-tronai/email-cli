@@ -1,0 +1,12 @@
+{
+  "Account": {
+    "uid.utid-login.microsoftonline.com-utid": {"home_account_id": "uid.utid", "environment": "login.microsoftonline.com", "realm": "utid", "username": "james@tronai.example", "authority_type": "MSSTS"},
+    "other.utid-login.microsoftonline.com-utid": {"home_account_id": "other.utid", "environment": "login.microsoftonline.com", "realm": "utid", "username": "someone@else.example", "authority_type": "MSSTS"}
+  },
+  "RefreshToken": {
+    "uid.utid-login.microsoftonline.com-refreshtoken-client-1--": {"home_account_id": "uid.utid", "environment": "login.microsoftonline.com", "credential_type": "RefreshToken", "client_id": "client-1", "secret": "rt-plain"},
+    "uid.utid-login.microsoftonline.com-refreshtoken-1--": {"home_account_id": "uid.utid", "environment": "login.microsoftonline.com", "credential_type": "RefreshToken", "client_id": "client-1", "family_id": "1", "secret": "rt-family"},
+    "other.utid-login.microsoftonline.com-refreshtoken-client-1--": {"home_account_id": "other.utid", "environment": "login.microsoftonline.com", "credential_type": "RefreshToken", "client_id": "client-1", "secret": "rt-other"}
+  },
+  "AppMetadata": {"appmetadata-login.microsoftonline.com-client-1": {"client_id": "client-1", "environment": "login.microsoftonline.com", "family_id": "1"}}
+}

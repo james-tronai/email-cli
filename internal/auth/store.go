@@ -28,15 +28,17 @@ import (
 )
 
 type Account struct {
-	Alias     string      `json:"alias"`
-	Provider  string      `json:"provider"`
-	Mode      policy.Mode `json:"mode"`
-	Username  string      `json:"username"` // locked identity (UPN / email)
-	TenantID  string      `json:"tenant_id,omitempty"`
-	ClientID  string      `json:"client_id,omitempty"`
-	Scopes    []string    `json:"scopes,omitempty"`
-	CreatedAt time.Time   `json:"created_at"`
-	UpdatedAt time.Time   `json:"updated_at"`
+	Alias    string      `json:"alias"`
+	Provider string      `json:"provider"`
+	Mode     policy.Mode `json:"mode"`
+	Username string      `json:"username"` // locked identity (UPN / email)
+	TenantID string      `json:"tenant_id,omitempty"`
+	ClientID string      `json:"client_id,omitempty"`
+	// HomeAccountID is the provider's stable account id (MSAL home_account_id).
+	HomeAccountID string    `json:"home_account_id,omitempty"`
+	Scopes        []string  `json:"scopes,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // Domain is the domain of the locked mailbox address.

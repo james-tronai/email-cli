@@ -1,0 +1,19 @@
+{
+  "value": [
+    {
+      "id": "AAMkAD-msg-1",
+      "conversationId": "AAQkAD-conv-1",
+      "subject": "Quarterly numbers",
+      "bodyPreview": "Numbers attached.",
+      "from": {"emailAddress": {"name": "James", "address": "james@tronai.example"}},
+      "toRecipients": [{"emailAddress": {"name": "Alice Example", "address": "alice@contoso.example"}}],
+      "receivedDateTime": "2026-10-07T22:00:00Z",
+      "isRead": true,
+      "isDraft": false,
+      "flag": {"flagStatus": "notFlagged"},
+      "hasAttachments": false,
+      "categories": [],
+      "parentFolderId": "AAMkAD-folder-inbox"
+    }
+  ]
+}

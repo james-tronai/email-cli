@@ -1,0 +1,23 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('redacted')/mailFolders('inbox')/messages",
+  "value": [
+    {
+      "id": "AAMkAD-msg-2",
+      "conversationId": "AAQkAD-conv-1",
+      "subject": "Re: Quarterly numbers",
+      "bodyPreview": "Looks good to me.",
+      "from": {"emailAddress": {"name": "Alice Example", "address": "alice@contoso.example"}},
+      "toRecipients": [{"emailAddress": {"name": "James", "address": "james@tronai.example"}}],
+      "ccRecipients": [],
+      "replyTo": [],
+      "receivedDateTime": "2026-10-08T09:30:00Z",
+      "isRead": false,
+      "isDraft": false,
+      "flag": {"flagStatus": "flagged"},
+      "hasAttachments": true,
+      "categories": ["Finance"],
+      "parentFolderId": "AAMkAD-folder-inbox"
+    }
+  ],
+  "@odata.nextLink": "{{BASE}}/me/mailFolders/inbox/messages?%24select=id&%24top=1&%24skip=1"
+}
