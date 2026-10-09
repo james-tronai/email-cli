@@ -1,0 +1,49 @@
+# goreleaser v2. Run by .github/workflows/release.yml on a v* tag.
+#
+# The asset names are a contract with the k3s initContainer, which downloads
+# by tag + name and checks checksums.txt:
+#   email_<os>_<arch>   bare static binaries, no archives, no version in the name
+#   checksums.txt       sha256, "<hex>  <name>" (sha256sum format)
+# Change them only together with the deployment side.
+version: 2
+
+project_name: email
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: email
+    main: ./cmd/email
+    binary: email
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      # .Tag keeps the leading "v" (`email version` prints v0.4.0, as before).
+      - -s -w -X main.version={{ .Tag }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: bare
+    formats: [binary]
+    name_template: "email_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  disable: true # notes come from .github/release-notes/<tag>.md (see the workflow)
+
+release:
+  github:
+    owner: james-tronai
+    name: email-cli
+  draft: false
+  prerelease: auto
+  mode: replace

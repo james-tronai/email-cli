@@ -2,7 +2,7 @@ version: "3"
 tasks:
   build:
     cmds:
-      - CGO_ENABLED=0 go build -ldflags "-s -w -X main.version={{.VERSION}}" -o email ./cmd/email
+      - CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}}" -o email ./cmd/email
     vars:
       VERSION:
         sh: git describe --tags --always --dirty 2>/dev/null || echo dev
@@ -15,3 +15,7 @@ tasks:
       - go vet ./...
   check:
     deps: [lint, test]
+  snapshot:
+    desc: build all release assets into dist/ without publishing (needs goreleaser v2)
+    cmds:
+      - goreleaser release --snapshot --clean

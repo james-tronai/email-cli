@@ -1,0 +1,39 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write # create the release and upload assets (GITHUB_TOKEN is enough, also for a private repo)
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: test
+        run: |
+          test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+          go vet ./...
+          go test -race -count=1 ./...
+      # Release notes are written by hand, because they must say what the
+      # deployment has to change. Without the file the release gets a
+      # one-line pointer to the commits.
+      - name: release notes
+        run: |
+          notes=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [ ! -f "$notes" ]; then
+            printf 'Commits: https://github.com/%s/commits/%s\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+            notes="$RUNNER_TEMP/notes.md"
+          fi
+          echo "NOTES=$notes" >> "$GITHUB_ENV"
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --release-notes ${{ env.NOTES }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
