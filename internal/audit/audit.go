@@ -21,6 +21,8 @@ type Entry struct {
 	Reason     string    `json:"reason,omitempty"`
 	Result     string    `json:"result,omitempty"` // ok | error | dry_run
 	ResultID   string    `json:"result_id,omitempty"`
+	Count      int       `json:"count,omitempty"` // watch.notify: new messages in the batch
+	IDs        []string  `json:"ids,omitempty"`   // watch.notify: their ids
 	Error      string    `json:"error,omitempty"`
 }
 

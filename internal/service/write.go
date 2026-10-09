@@ -242,6 +242,23 @@ func (s *Service) DefaultSyncStateFile(label string) string {
 	return filepath.Join(s.StateDir, "sync", s.Account.Alias+"-"+unsafeFileChars.ReplaceAllString(label, "_")+".cursor")
 }
 
+// SyncFrom returns mail that arrived since the cursor state ("" sets a
+// baseline). The caller keeps the cursor: `email watch` has its own,
+// apart from `email sync`'s state files.
+func (s *Service) SyncFrom(ctx context.Context, label, state string) (*provider.SyncResult, error) {
+	if label == "" {
+		label = provider.LabelInbox
+	}
+	if _, err := s.gate(policy.Request{Op: policy.OpSync}, label); err != nil {
+		return nil, err
+	}
+	sy, err := capability[provider.Syncer](s, "sync")
+	if err != nil {
+		return nil, err
+	}
+	return sy.Sync(ctx, provider.SyncOptions{Label: label, State: state})
+}
+
 // Sync returns mail that arrived since the cursor in stateFile, then advances
 // the cursor. The first run only records a baseline.
 func (s *Service) Sync(ctx context.Context, label, stateFile string) (*SyncOutput, error) {
@@ -251,18 +268,11 @@ func (s *Service) Sync(ctx context.Context, label, stateFile string) (*SyncOutpu
 	if stateFile == "" {
 		stateFile = s.DefaultSyncStateFile(label)
 	}
-	if _, err := s.gate(policy.Request{Op: policy.OpSync}, label); err != nil {
-		return nil, err
-	}
-	sy, err := capability[provider.Syncer](s, "sync")
-	if err != nil {
-		return nil, err
-	}
 	prev, err := os.ReadFile(stateFile)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
-	res, err := sy.Sync(ctx, provider.SyncOptions{Label: label, State: strings.TrimSpace(string(prev))})
+	res, err := s.SyncFrom(ctx, label, strings.TrimSpace(string(prev)))
 	if err != nil {
 		return nil, err
 	}

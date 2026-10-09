@@ -185,3 +185,24 @@ func TestCheckAPI(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadWatch(t *testing.T) {
+	p, err := Load(writePolicy(t, "[default]\nmode = \"draft\"\n"))
+	if err != nil || !p.Watch.OnlyUnread || len(p.Watch.IgnoreSenders) != 0 {
+		t.Fatalf("without [watch]: %+v %v", p.Watch, err)
+	}
+	p, err = Load(writePolicy(t, "[default]\nmode = \"read\"\n[watch]\nignore_senders = [\" NoReply@ \", \"@Mail.Anthropic.com\"]\nignore_subjects = [\"[Newsletter]\"]\nonly_unread = false\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := p.Watch
+	if strings.Join(w.IgnoreSenders, ",") != "noreply@,@mail.anthropic.com" || w.IgnoreSubjects[0] != "[newsletter]" || w.OnlyUnread {
+		t.Fatalf("%+v", w)
+	}
+	if _, err := Load(writePolicy(t, "[default]\nmode = \"read\"\n[watch]\nignore_senders = [\"\"]\n")); err == nil {
+		t.Fatal("an empty entry would silence everything")
+	}
+	if _, err := Load(writePolicy(t, "[default]\nmode = \"read\"\n[watch]\nignore_sender = [\"x\"]\n")); err == nil {
+		t.Fatal("unknown [watch] key accepted")
+	}
+}

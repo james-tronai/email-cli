@@ -70,6 +70,7 @@ type Policy struct {
 	Default DefaultSection `toml:"default" json:"default"`
 	Send    SendSection    `toml:"send" json:"send"`
 	Delete  DeleteSection  `toml:"delete" json:"delete"`
+	Watch   WatchSection   `toml:"watch" json:"watch"`
 
 	Source string `toml:"-" json:"source"` // file path, or "builtin"
 }
@@ -90,6 +91,16 @@ type DeleteSection struct {
 	Enabled bool `toml:"enabled" json:"enabled"`
 }
 
+// WatchSection filters what `email watch` notifies about. Entries match
+// as case-insensitive substrings: "noreply@" or a "@domain" suffix.
+type WatchSection struct {
+	IgnoreSenders  []string `toml:"ignore_senders" json:"ignore_senders"`
+	IgnoreSubjects []string `toml:"ignore_subjects" json:"ignore_subjects"`
+	// OnlyUnread skips mail already read (on the phone, say) by the time
+	// watch sees it.
+	OnlyUnread bool `toml:"only_unread" json:"only_unread"`
+}
+
 // Builtin is used when no policy file exists: read-only, which is the safe
 // failure mode for a missing or mis-mounted ConfigMap.
 func Builtin() *Policy {
@@ -100,6 +111,7 @@ func Builtin() *Policy {
 			BlockExternalForward: true,
 			RequireReplyContext:  true,
 		},
+		Watch:  WatchSection{OnlyUnread: true},
 		Source: "builtin",
 	}
 }
@@ -145,6 +157,16 @@ func Load(path string) (*Policy, error) {
 	}
 	for i, d := range p.Send.AllowedRecipientDomains {
 		p.Send.AllowedRecipientDomains[i] = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(d), "@"))
+	}
+	for _, l := range []*[]string{&p.Watch.IgnoreSenders, &p.Watch.IgnoreSubjects} {
+		for i, v := range *l {
+			v = strings.ToLower(strings.TrimSpace(v))
+			if v == "" {
+				// An empty substring matches every message.
+				return nil, fmt.Errorf("policy %s: [watch] has an empty ignore entry", path)
+			}
+			(*l)[i] = v
+		}
 	}
 	p.Source = path
 	return p, nil
