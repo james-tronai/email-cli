@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -215,4 +216,59 @@ func TestSendNeedsSendModeAndASender(t *testing.T) {
 	if m := e2.code(2, "send", "fake-0001"); !strings.Contains(m["error"].(map[string]any)["message"].(string), "does not support send") {
 		t.Fatalf("fake has no sender: %v", m)
 	}
+}
+
+func TestIMAPLoginFlagChecks(t *testing.T) {
+	e := newEnv(t, draftPolicy)
+	for _, args := range [][]string{
+		{"auth", "login", "-a", "gm", "--provider", "imap", "--username", "j@gmail.com"},                                     // no --password-stdin
+		{"auth", "login", "-a", "gm", "--provider", "imap", "--password-stdin"},                                              // no --username
+		{"auth", "login", "-a", "gm", "--provider", "imap", "--username", "j@gmail.com", "--password", "x"},                  // never on argv
+		{"auth", "login", "-a", "gm", "--provider", "imap", "--username", "j@example.org", "--password-stdin"},               // no host for a non-Gmail domain
+		{"auth", "login", "-a", "gm", "--provider", "imap", "--username", "j@gmail.com", "--password-stdin", "--manual"},     // OAuth flag
+		{"auth", "login", "-a", "gw", "--provider", "gmail", "--password-stdin", "--client-id", "i", "--client-secret", "s"}, // imap flag elsewhere
+		{"auth", "login", "-a", "gw", "--provider", "msgraph", "--imap-host", "imap.example.org"},                            // imap flag elsewhere
+		{"auth", "login", "-a", "demo", "--provider", "imap", "--username", "j@gmail.com", "--password-stdin"},               // alias is a fake account
+	} {
+		code, _, errOut := e.run("app-password\n", args...)
+		if code != 2 {
+			t.Errorf("%v: exit %d, want 2: %s", args, code, errOut)
+		}
+		if strings.Contains(errOut, "app-password") {
+			t.Errorf("%v: error echoes the password: %s", args, errOut)
+		}
+	}
+}
+
+// An imap account in draft mode: capabilities and the send gate work
+// without connecting, auth status never shows the password, and a broken
+// credentials file is a login error.
+func TestIMAPAccountWithoutNetwork(t *testing.T) {
+	e := newEnv(t, draftPolicy)
+	dir := filepath.Join(e.cfg, "accounts", "gm")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "account.json"), []byte(`{"alias":"gm","provider":"imap","mode":"draft","username":"j@gmail.com",
+		"servers":{"imap_host":"127.0.0.1","imap_port":1,"smtp_host":"127.0.0.1","smtp_port":1}}`), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "imap-credentials.json"), []byte(`{"username":"j@gmail.com","password":"s3cret-app-pw"}`), 0o600)
+
+	var caps struct{ Capabilities, Commands []string }
+	if err := json.Unmarshal([]byte(e.ok("-a", "gm", "capabilities")), &caps); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(caps.Capabilities, "send") || slices.Contains(caps.Commands, "send") ||
+		!slices.Contains(caps.Commands, "draft create") || !slices.Contains(caps.Commands, "label") {
+		t.Errorf("capabilities in draft mode = %+v", caps)
+	}
+	e.code(4, "-a", "gm", "send", "abc")
+	if st := e.ok("auth", "status", "-a", "gm"); strings.Contains(st, "s3cret") || !strings.Contains(st, `"imap_host": "127.0.0.1"`) {
+		t.Errorf("auth status: %s", st)
+	}
+
+	// The credentials belong to another address: the account lock trips.
+	_ = os.WriteFile(filepath.Join(dir, "imap-credentials.json"), []byte(`{"username":"other@gmail.com","password":"x"}`), 0o600)
+	e.code(3, "-a", "gm", "list")
+	_ = os.Remove(filepath.Join(dir, "imap-credentials.json"))
+	e.code(3, "-a", "gm", "list")
 }

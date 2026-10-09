@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -16,6 +17,7 @@ import (
 	"github.com/james-tronai/email-cli/internal/provider"
 	"github.com/james-tronai/email-cli/internal/provider/fake"
 	"github.com/james-tronai/email-cli/internal/provider/gmail"
+	"github.com/james-tronai/email-cli/internal/provider/imap"
 	"github.com/james-tronai/email-cli/internal/provider/msgraph"
 )
 
@@ -158,9 +160,45 @@ func (a *app) loginGmail(ctx context.Context, acct *auth.Account, clientSecret, 
 	return res.Warnings, nil
 }
 
+// loginIMAP reads the password from stdin (never argv or the environment)
+// and checks it with one IMAP login.
+func (a *app) loginIMAP(ctx context.Context, acct *auth.Account, username string, servers auth.Servers, passwordStdin bool) ([]string, error) {
+	if username == "" {
+		return nil, errs.Usage("--username <address> is required for --provider imap")
+	}
+	if !passwordStdin {
+		return nil, errs.Usage("--password-stdin is required: pipe the password in, e.g. `email auth login … --password-stdin < file`; it is not accepted as an argument")
+	}
+	b, err := io.ReadAll(io.LimitReader(a.stdin, 4096))
+	if err != nil {
+		return nil, err
+	}
+	pw := strings.TrimRight(string(b), "\r\n")
+	acct.Username = strings.TrimSpace(username)
+	acct.Servers = &servers
+	if prev, err := a.store.LoadAccount(acct.Alias); err == nil {
+		acct.CreatedAt = prev.CreatedAt
+		if servers == (auth.Servers{}) && prev.Servers != nil {
+			acct.Servers = prev.Servers // a re-login keeps the hosts
+		}
+	}
+	host := acct.Servers.IMAPHost
+	if host == "" || strings.EqualFold(host, imap.GmailIMAPHost) {
+		// Google shows app passwords in groups of four; the spaces are not part of it.
+		pw = strings.ReplaceAll(pw, " ", "")
+	}
+	res, err := imap.Login(ctx, imap.LoginParams{Store: a.store, Account: acct, Password: pw, TLS: a.tlsConfig})
+	if err != nil {
+		return nil, err
+	}
+	acct.Username = res.Username
+	return res.Warnings, nil
+}
+
 func (a *app) authLoginCmd() *cobra.Command {
 	var prov, mode, tenant, clientID, clientSecret, clientFile, username, flow string
-	var manual, noBrowser bool
+	var manual, noBrowser, passwordStdin bool
+	var servers auth.Servers
 	c := &cobra.Command{
 		Use:   "login",
 		Short: "Log in an account; scopes are requested for --mode only",
@@ -170,7 +208,7 @@ func (a *app) authLoginCmd() *cobra.Command {
   draft  Graph: + Mail.ReadWrite                         Gmail: gmail.modify
   send   Graph: + Mail.Send                              Gmail: gmail.modify
 
-Raising the mode requires logging in again. Providers: msgraph, gmail, fake.
+Raising the mode requires logging in again. Providers: msgraph, gmail, imap, fake.
 
 Login uses OAuth authorization code + PKCE. By default it listens on
 http://localhost:<random port>/callback and opens a browser. On a headless
@@ -180,7 +218,14 @@ msgraph also has --flow device (device code), which Entra Security Defaults bloc
 
 gmail needs a GCP OAuth client of type Desktop app: --client-file, or
 --client-id with --client-secret. It is stored with the account, so a
-re-login needs neither. See docs/google-workspace-setup.md.`,
+re-login needs neither. See docs/google-workspace-setup.md.
+
+imap logs in with a password (for personal Gmail: an app password), read
+from stdin only: --username <address> --password-stdin. A gmail.com address
+gets Gmail's servers; anything else needs --imap-host (and --smtp-host to
+send). The password can do everything, so --mode is kept by the policy file
+and this client, which never connects to SMTP below send mode. See
+docs/gmail-personal-setup.md.`,
 		Args: exactArgs(0),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if a.account == "" {
@@ -194,6 +239,10 @@ re-login needs neither. See docs/google-workspace-setup.md.`,
 				return errs.Usage("%v", err)
 			}
 			acct := &auth.Account{Alias: a.account, Provider: prov, Mode: m, TenantID: tenant, ClientID: clientID}
+			imapFlags := passwordStdin || servers != (auth.Servers{})
+			if imapFlags && prov != imap.Name {
+				return errs.Usage("--password-stdin and --imap-*/--smtp-* apply to --provider imap only")
+			}
 			switch prov {
 			case fake.Name:
 				if username == "" {
@@ -228,8 +277,22 @@ re-login needs neither. See docs/google-workspace-setup.md.`,
 				}
 				res.Warnings = warnings
 				return a.output(res)
+			case imap.Name:
+				if cmd.Flags().Changed("flow") || tenant != "" || clientID != "" || clientSecret != "" || clientFile != "" || manual {
+					return errs.Usage("--flow, --tenant, --client-* and --manual do not apply to --provider imap")
+				}
+				warnings, err := a.loginIMAP(cmd.Context(), acct, username, servers, passwordStdin)
+				if err != nil {
+					return err
+				}
+				res, err := a.finishLogin(acct)
+				if err != nil {
+					return err
+				}
+				res.Warnings = warnings
+				return a.output(res)
 			default:
-				return errs.Usage("unknown --provider %q (want msgraph, gmail or fake)", prov)
+				return errs.Usage("unknown --provider %q (want msgraph, gmail, imap or fake)", prov)
 			}
 			res, err := a.finishLogin(acct)
 			if err != nil {
@@ -239,7 +302,7 @@ re-login needs neither. See docs/google-workspace-setup.md.`,
 		},
 	}
 	f := c.Flags()
-	f.StringVar(&prov, "provider", "", "msgraph | gmail | fake")
+	f.StringVar(&prov, "provider", "", "msgraph | gmail | imap | fake")
 	f.StringVar(&mode, "mode", "read", "read | draft | send")
 	f.StringVar(&tenant, "tenant", "", "Entra tenant id or domain (msgraph; default organizations)")
 	f.StringVar(&clientID, "client-id", "", "OAuth client id")
@@ -248,7 +311,12 @@ re-login needs neither. See docs/google-workspace-setup.md.`,
 	f.StringVar(&flow, "flow", "auth-code", "msgraph: auth-code (browser + PKCE) | device (blocked by Entra Security Defaults)")
 	f.BoolVar(&manual, "manual", false, "headless: print authorize_url, then paste the redirect URL from the browser on stdin")
 	f.BoolVar(&noBrowser, "no-browser", false, "do not try to open a browser (loopback flow)")
-	f.StringVar(&username, "username", "", "fake: mailbox address")
+	f.StringVar(&username, "username", "", "imap, fake: mailbox address (imap: also the login name)")
+	f.BoolVar(&passwordStdin, "password-stdin", false, "imap: read the (app) password from stdin")
+	f.StringVar(&servers.IMAPHost, "imap-host", "", "imap: IMAP server (default imap.gmail.com for gmail.com addresses)")
+	f.IntVar(&servers.IMAPPort, "imap-port", 0, "imap: IMAP port (default 993; implicit TLS, except STARTTLS on 143)")
+	f.StringVar(&servers.SMTPHost, "smtp-host", "", "imap: SMTP server for send (default smtp.gmail.com for gmail.com addresses)")
+	f.IntVar(&servers.SMTPPort, "smtp-port", 0, "imap: SMTP port (default 465; implicit TLS, except STARTTLS on 25 and 587)")
 	_ = c.MarkFlagRequired("provider")
 	return c
 }
