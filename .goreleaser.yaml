@@ -37,8 +37,9 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
-changelog:
-  disable: true # notes come from .github/release-notes/<tag>.md (see the workflow)
+# No changelog section: the workflow always passes --release-notes (the
+# hand-written .github/release-notes/<tag>.md, or a fallback). Note that
+# `changelog: disable: true` would also drop --release-notes.
 
 release:
   github:
