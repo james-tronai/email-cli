@@ -127,6 +127,9 @@ Exit codes: 0 ok, 2 usage, 3 auth required, 4 policy denied, 5 provider error, 6
 			if cmd.Name() == "login" && !cmd.Flags().Changed("timeout") {
 				timeout = 15 * time.Minute // device code lifetime
 			}
+			if cmd.Name() == "watch" && !cmd.Flags().Changed("timeout") {
+				timeout = 0 // runs until stopped
+			}
 			if timeout > 0 {
 				ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 				a.cancel = cancel
@@ -162,6 +165,7 @@ Exit codes: 0 ok, 2 usage, 3 auth required, 4 policy denied, 5 provider error, 6
 		a.labelCmd(),
 		a.markCmd(),
 		a.syncCmd(),
+		a.watchCmd(),
 		a.apiCmd(),
 	)
 	return root

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"time"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/james-tronai/email-cli/internal/errs"
 	"github.com/james-tronai/email-cli/internal/provider"
+	"github.com/james-tronai/email-cli/internal/render"
 	"github.com/james-tronai/email-cli/internal/service"
 )
 
@@ -124,12 +126,42 @@ func (a *app) threadCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return a.output(msgs)
+			if msgs == nil {
+				msgs = []provider.Message{}
+			}
+			return a.output(threadOutput{ThreadID: args[0], Messages: msgs})
 		},
 	}
 	g.register(c)
 	c.Flags().IntVar(&limit, "limit", 0, "only the last N messages (0 = all)")
 	return c
+}
+
+// threadOutput is an object like list's page, so `--jq .messages` works
+// for both (v0.6.0; it used to be a bare array).
+type threadOutput struct {
+	ThreadID string             `json:"thread_id"`
+	Messages []provider.Message `json:"messages"`
+}
+
+func (t threadOutput) IDs() []string {
+	ids := make([]string, len(t.Messages))
+	for i, m := range t.Messages {
+		ids[i] = m.ID
+	}
+	return ids
+}
+
+func (t threadOutput) WriteText(w io.Writer) error {
+	for i := range t.Messages {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		if err := render.MessageText(w, &t.Messages[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *app) attachmentsCmd() *cobra.Command {

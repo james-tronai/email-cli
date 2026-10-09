@@ -272,3 +272,124 @@ func TestIMAPAccountWithoutNetwork(t *testing.T) {
 	_ = os.Remove(filepath.Join(dir, "imap-credentials.json"))
 	e.code(3, "-a", "gm", "list")
 }
+
+func TestThreadIsAnObject(t *testing.T) {
+	e := newEnv(t, draftPolicy)
+	var pg struct {
+		Messages []struct {
+			ID       string `json:"id"`
+			ThreadID string `json:"thread_id"`
+		}
+	}
+	if err := json.Unmarshal([]byte(e.ok("list", "--limit", "1")), &pg); err != nil || len(pg.Messages) != 1 {
+		t.Fatalf("%+v %v", pg, err)
+	}
+	tid := pg.Messages[0].ThreadID
+	var th struct {
+		ThreadID string `json:"thread_id"`
+		Messages []struct{ ID string }
+	}
+	if err := json.Unmarshal([]byte(e.ok("thread", tid)), &th); err != nil || th.ThreadID != tid || len(th.Messages) == 0 {
+		t.Fatalf("thread: %+v %v", th, err)
+	}
+	if got := strings.TrimSpace(e.ok("thread", tid, "--jq", ".messages[0].id")); got != th.Messages[0].ID {
+		t.Fatalf("--jq .messages: %s", got)
+	}
+	if got := strings.TrimSpace(e.ok("thread", tid, "--format", "id")); got != th.Messages[0].ID {
+		t.Fatalf("--format id: %q", got)
+	}
+}
+
+func TestAuthStatusShowsEffectiveIMAPServers(t *testing.T) {
+	e := newEnv(t, draftPolicy)
+	dir := filepath.Join(e.cfg, "accounts", "gm")
+	_ = os.MkdirAll(dir, 0o700)
+	// Logged in with Gmail's defaults (ports left out).
+	_ = os.WriteFile(filepath.Join(dir, "account.json"), []byte(`{"alias":"gm","provider":"imap","mode":"draft","username":"j@gmail.com",
+		"servers":{"imap_host":"imap.gmail.com","imap_port":0}}`), 0o600)
+	var st []map[string]any
+	if err := json.Unmarshal([]byte(e.ok("auth", "status", "-a", "gm")), &st); err != nil {
+		t.Fatal(err)
+	}
+	if st[0]["imap_server"] != "imap.gmail.com:993" || st[0]["smtp_server"] != "smtp.gmail.com:465" {
+		t.Fatalf("status %v", st[0])
+	}
+	if txt := e.ok("auth", "status", "-a", "gm", "--format", "text"); !strings.Contains(txt, "imap=imap.gmail.com:993 smtp=smtp.gmail.com:465") {
+		t.Fatalf("text: %s", txt)
+	}
+	if st := e.ok("auth", "status", "-a", "demo"); strings.Contains(st, "imap_server") {
+		t.Fatalf("non-imap account shows servers: %s", st)
+	}
+}
+
+func TestWatchFlagChecks(t *testing.T) {
+	e := newEnv(t, draftPolicy)
+	e.code(2, "watch", "-a", "demo")                                               // no --notify-url
+	e.code(2, "watch", "-a", "demo", "--notify-url", "ftp://x")                    // not http
+	e.code(2, "watch", "-a", "demo", "--dry-run", "--health-addr", "0.0.0.0:8645") // not loopback
+	e.code(2, "watch", "-a", "demo", "--notify-url", "http://127.0.0.1:1/", "--notify-token-env", "EMAIL_TEST_UNSET_TOKEN")
+	e.code(2, "watch", "-a", "demo", "--dry-run", "--poll-interval", "1s")
+	e.code(3, "watch", "-a", "missing", "--dry-run")
+	e.code(2, "watch", "healthz", "--health-addr", "10.0.0.1:8645")
+}
+
+// End to end on the fake provider: the watch cursor starts before the
+// seeded mail, so the first sync finds it; [watch] drops one sender and
+// the rest goes out as one notification (printed by --dry-run). Logs are
+// JSON lines; the audit has the notification.
+func TestWatchDryRunEndToEnd(t *testing.T) {
+	e := newEnv(t, draftPolicy+"\n[watch]\nignore_senders = [\"Billing@\"]\n")
+	stateDir := filepath.Join(t.TempDir(), "watch")
+	_ = os.MkdirAll(stateDir, 0o700)
+	_ = os.WriteFile(filepath.Join(stateDir, "demo.json"), []byte(`{"version":1,"provider":"fake","cursor":"0","notified":[]}`), 0o600)
+
+	code, out, errOut := e.run("", "watch", "-a", "demo", "--dry-run", "--debounce", "0s", "--poll-interval", "5s",
+		"--state-dir", stateDir, "--timeout", "1500ms", "--log-level", "debug")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	var p struct {
+		Source, Account string
+		Count           int
+		Messages        []struct {
+			Subject string
+			From    struct{ Email string }
+		}
+	}
+	if err := json.Unmarshal([]byte(out), &p); err != nil {
+		t.Fatalf("%v: %q", err, out)
+	}
+	if p.Source != "email-watch" || p.Account != "demo" || p.Count != 2 || len(p.Messages) != 2 {
+		t.Fatalf("payload %+v", p)
+	}
+	for _, m := range p.Messages {
+		if m.From.Email == "billing@vendor.example" {
+			t.Fatal("ignore_senders did not apply")
+		}
+	}
+	events := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(errOut), "\n") {
+		var l map[string]any
+		if err := json.Unmarshal([]byte(line), &l); err != nil {
+			t.Fatalf("log line is not JSON: %q", line)
+		}
+		if l["ts"] == nil || l["level"] == nil || l["msg"] == nil {
+			t.Fatalf("log line %v", l)
+		}
+		ev, _ := l["event"].(string)
+		events[ev] = true
+	}
+	for _, ev := range []string{"start", "new_mail", "filtered", "notify_ok", "stop"} {
+		if !events[ev] {
+			t.Errorf("no %s event in %s", ev, errOut)
+		}
+	}
+	audit, _ := os.ReadFile(filepath.Join(os.Getenv("EMAIL_STATE_DIR"), "audit.jsonl"))
+	if !strings.Contains(string(audit), `"op":"watch.notify"`) || !strings.Contains(string(audit), `"count":2`) {
+		t.Fatalf("audit: %s", audit)
+	}
+	// `email sync` keeps its own cursor: watch did not create or move it.
+	if _, err := os.Stat(filepath.Join(os.Getenv("EMAIL_STATE_DIR"), "sync")); err == nil {
+		t.Fatal("watch touched the sync state")
+	}
+}

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -360,6 +362,9 @@ type accountStatus struct {
 	PolicyMode    policy.Mode `json:"policy_mode"`
 	PolicySource  string      `json:"policy_source"`
 	Default       bool        `json:"default"`
+	// imap: the servers in effect, defaults included ("host:port").
+	IMAPServer string `json:"imap_server,omitempty"`
+	SMTPServer string `json:"smtp_server,omitempty"`
 }
 
 func (a *app) statuses(only string) ([]accountStatus, error) {
@@ -383,8 +388,21 @@ func (a *app) statuses(only string) ([]accountStatus, error) {
 	}
 	out := []accountStatus{}
 	for _, ac := range accts {
-		out = append(out, accountStatus{Account: ac, EffectiveMode: pol.EffectiveMode(ac.Mode), PolicyMode: pol.Default.Mode,
-			PolicySource: pol.Source, Default: cfg.DefaultAccount == ac.Alias})
+		st := accountStatus{Account: ac, EffectiveMode: pol.EffectiveMode(ac.Mode), PolicyMode: pol.Default.Mode,
+			PolicySource: pol.Source, Default: cfg.DefaultAccount == ac.Alias}
+		if ac.Provider == imap.Name {
+			var stored auth.Servers
+			if ac.Servers != nil {
+				stored = *ac.Servers
+			}
+			if eff, err := imap.DefaultServers(ac.Username, stored); err == nil {
+				st.IMAPServer = net.JoinHostPort(eff.IMAPHost, strconv.Itoa(eff.IMAPPort))
+				if eff.SMTPHost != "" {
+					st.SMTPServer = net.JoinHostPort(eff.SMTPHost, strconv.Itoa(eff.SMTPPort))
+				}
+			}
+		}
+		out = append(out, st)
 	}
 	return out, nil
 }
@@ -397,7 +415,14 @@ func (s statusList) WriteText(w io.Writer) error {
 		if st.Default {
 			def = "*"
 		}
-		fmt.Fprintf(w, "%s %-12s %-8s %-30s login=%s effective=%s\n", def, st.Alias, st.Provider, st.Username, st.Mode, st.EffectiveMode)
+		fmt.Fprintf(w, "%s %-12s %-8s %-30s login=%s effective=%s", def, st.Alias, st.Provider, st.Username, st.Mode, st.EffectiveMode)
+		if st.IMAPServer != "" {
+			fmt.Fprintf(w, " imap=%s", st.IMAPServer)
+		}
+		if st.SMTPServer != "" {
+			fmt.Fprintf(w, " smtp=%s", st.SMTPServer)
+		}
+		fmt.Fprintln(w)
 	}
 	return nil
 }
