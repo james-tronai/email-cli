@@ -256,12 +256,52 @@ func (f *fakeGmail) serve(nc net.Conn) {
 		} else {
 			f.log = append(f.log, cmd)
 		}
+		if cmd == "IDLE" && s.selected != nil {
+			f.mu.Unlock()
+			s.idle()
+			fmt.Fprintf(s.c.w, "%s OK IDLE terminated (Success)\r\n", tag)
+			s.c.w.Flush()
+			continue
+		}
 		status, text := s.handle(cmd, fields[1:])
 		f.mu.Unlock()
 		fmt.Fprintf(s.c.w, "%s %s %s\r\n", tag, status, text)
 		s.c.w.Flush()
 		if cmd == "LOGOUT" {
 			return
+		}
+	}
+}
+
+// idle reports EXISTS when the selected mailbox grows, until DONE.
+func (s *gmSession) idle() {
+	count := func() int {
+		s.f.mu.Lock()
+		defer s.f.mu.Unlock()
+		msgs, _ := s.f.view(s.selected)
+		return len(msgs)
+	}
+	n := count()
+	s.c.w.WriteString("+ idling\r\n")
+	s.c.w.Flush()
+	done := make(chan struct{})
+	go func() {
+		line, _ := s.c.readLine()
+		if !strings.EqualFold(strings.TrimSpace(line), "DONE") {
+			s.f.t.Errorf("IDLE ended with %q", line)
+		}
+		close(done)
+	}()
+	for {
+		select {
+		case <-done:
+			return
+		case <-time.After(10 * time.Millisecond):
+		}
+		if m := count(); m > n {
+			n = m
+			s.out("* %d EXISTS", n)
+			s.c.w.Flush()
 		}
 	}
 }

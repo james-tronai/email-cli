@@ -61,6 +61,10 @@ type conn struct {
 
 	caps map[string]bool
 
+	// broken is set when the protocol state is unknown (an IDLE that did
+	// not end cleanly); close then drops the socket without LOGOUT.
+	broken bool
+
 	// Selected mailbox state.
 	selected    string
 	readOnly    bool
@@ -205,6 +209,11 @@ func (c *conn) close() {
 	if c == nil || c.nc == nil {
 		return
 	}
+	if c.broken {
+		_ = c.nc.Close()
+		c.nc = nil
+		return
+	}
 	_ = c.nc.SetDeadline(time.Now().Add(5 * time.Second))
 	c.tag++
 	fmt.Fprintf(c.w, "x%d LOGOUT\r\n", c.tag)
@@ -295,6 +304,116 @@ func (c *conn) run(ctx context.Context, args ...any) ([]*response, error) {
 			return nil, errs.Provider("bye", fmt.Errorf("IMAP server closed the connection: %s", r.Text))
 		case r.Tag == "*":
 			untagged = append(untagged, r)
+		}
+	}
+}
+
+// idle runs IDLE (RFC 2177) on the selected mailbox until the server
+// reports new mail (EXISTS or RECENT), maxWait passes or ctx ends, then
+// ends it with DONE. woke reports new mail. On any error the connection is
+// marked broken and must be closed.
+func (c *conn) idle(ctx context.Context, maxWait time.Duration) (woke bool, err error) {
+	defer func() {
+		if err != nil {
+			c.broken = true
+		}
+	}()
+	c.tag++
+	tag := "x" + strconv.Itoa(c.tag)
+	stop := c.watch(ctx)
+	c.w.WriteString(tag + " IDLE\r\n")
+	if err := c.w.Flush(); err != nil {
+		stop()
+		return false, netErr(ctx, "write", err)
+	}
+	for {
+		r, err := c.readResponse()
+		if err != nil {
+			stop()
+			return false, netErr(ctx, "read", err)
+		}
+		if r.Tag == "+" {
+			break
+		}
+		if r.Tag == tag {
+			stop()
+			return false, statusErr(r)
+		}
+		if r.Kind == "EXISTS" || r.Kind == "RECENT" {
+			woke = true
+		}
+	}
+	stop()
+
+	// Read in the background; the DONE goes out from here.
+	type result struct {
+		r   *response
+		err error
+	}
+	ch := make(chan result, 16)
+	go func() {
+		for {
+			r, err := c.readResponse()
+			ch <- result{r, err}
+			if err != nil || r.Tag == tag {
+				return
+			}
+		}
+	}()
+	timer := time.NewTimer(maxWait)
+	defer timer.Stop()
+	sentDone := false
+	done := func(wait time.Duration) error {
+		if sentDone {
+			return nil
+		}
+		sentDone = true
+		_ = c.nc.SetReadDeadline(time.Now().Add(wait))
+		// The reply must come soon; a silent server is a dead one.
+		_ = c.nc.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		if _, err := c.w.WriteString("DONE\r\n"); err != nil {
+			return err
+		}
+		return c.w.Flush()
+	}
+	if woke {
+		if err := done(30 * time.Second); err != nil {
+			return woke, netErr(ctx, "write", err)
+		}
+	}
+	ctxDone := ctx.Done()
+	for {
+		select {
+		case <-timer.C:
+			if err := done(30 * time.Second); err != nil {
+				return woke, netErr(context.Background(), "write", err)
+			}
+		case <-ctxDone:
+			ctxDone = nil
+			// Shutting down: give the server a few seconds only.
+			if err := done(5 * time.Second); err != nil {
+				return woke, netErr(ctx, "write", err)
+			}
+			_ = c.nc.SetReadDeadline(time.Now().Add(5 * time.Second))
+		case x := <-ch:
+			if x.err != nil {
+				return woke, netErr(context.Background(), "read", x.err)
+			}
+			switch {
+			case x.r.Tag == tag:
+				_ = c.nc.SetDeadline(time.Time{})
+				if x.r.Status != "OK" {
+					return woke, statusErr(x.r)
+				}
+				return woke, nil
+			case x.r.Tag == "*" && x.r.Status == "BYE":
+				return woke, errs.Provider("bye", fmt.Errorf("IMAP server closed the connection: %s", x.r.Text))
+			case x.r.Kind == "EXISTS" || x.r.Kind == "RECENT":
+				woke = true
+				if err := done(30 * time.Second); err != nil {
+					return woke, netErr(ctx, "write", err)
+				}
+			}
 		}
 	}
 }

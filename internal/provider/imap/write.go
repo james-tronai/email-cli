@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/james-tronai/email-cli/internal/errs"
 	"github.com/james-tronai/email-cli/internal/provider"
@@ -337,6 +338,25 @@ func (p *Provider) status(ctx context.Context, box string) (syncState, error) {
 		return st, errs.Provider("invalidResponse", fmt.Errorf("STATUS %q returned no UIDVALIDITY", box))
 	}
 	return st, nil
+}
+
+// Idle waits on INBOX with IMAP IDLE until new mail arrives (true),
+// maxWait passes or ctx ends (false). It changes nothing: INBOX is opened
+// with EXAMINE. A server without IDLE gives errs.Unsupported. After any
+// other error the connection is gone; Close the provider and open a new
+// one.
+func (p *Provider) Idle(ctx context.Context, maxWait time.Duration) (bool, error) {
+	c, err := p.conn(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !c.has("IDLE") {
+		return false, errs.Unsupported("the IMAP server does not support IDLE")
+	}
+	if c, err = p.selectBox(ctx, "INBOX", false); err != nil {
+		return false, err
+	}
+	return c.idle(ctx, maxWait)
 }
 
 func (p *Provider) Sync(ctx context.Context, o provider.SyncOptions) (*provider.SyncResult, error) {

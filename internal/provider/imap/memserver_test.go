@@ -22,7 +22,8 @@ import (
 
 // The non-Gmail path runs against go-imap's in-memory server: an
 // independent implementation of the protocol, over STARTTLS, without
-// X-GM-EXT-1, CONDSTORE or SPECIAL-USE.
+// X-GM-EXT-1, CONDSTORE or SPECIAL-USE. With extensions it adds UIDPLUS,
+// MOVE and IDLE.
 
 const memUser = "james@example.org"
 
@@ -54,6 +55,7 @@ func newMemEnv(t *testing.T, mode policy.Mode, extensions bool) *memEnv {
 	if extensions {
 		caps[goimap.CapUIDPlus] = struct{}{}
 		caps[goimap.CapMove] = struct{}{}
+		caps[goimap.CapIdle] = struct{}{}
 	}
 	srv := imapserver.New(&imapserver.Options{
 		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
