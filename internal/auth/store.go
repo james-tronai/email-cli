@@ -35,10 +35,21 @@ type Account struct {
 	TenantID string      `json:"tenant_id,omitempty"`
 	ClientID string      `json:"client_id,omitempty"`
 	// HomeAccountID is the provider's stable account id (MSAL home_account_id).
-	HomeAccountID string    `json:"home_account_id,omitempty"`
-	Scopes        []string  `json:"scopes,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	HomeAccountID string   `json:"home_account_id,omitempty"`
+	Scopes        []string `json:"scopes,omitempty"`
+	// Servers are the hosts of an imap account (the password is stored
+	// separately, never in account.json).
+	Servers   *Servers  `json:"servers,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Servers are an imap account's IMAP and SMTP endpoints.
+type Servers struct {
+	IMAPHost string `json:"imap_host"`
+	IMAPPort int    `json:"imap_port"`
+	SMTPHost string `json:"smtp_host,omitempty"`
+	SMTPPort int    `json:"smtp_port,omitempty"`
 }
 
 // Domain is the domain of the locked mailbox address.
@@ -123,7 +134,7 @@ func (s *Store) LoadAccount(alias string) (*Account, error) {
 	}
 	b, err := os.ReadFile(filepath.Join(s.AccountDir(alias), "account.json"))
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, errs.Auth("account %q not found; run `email auth login -a %s --provider <msgraph|gmail>`", alias, alias)
+		return nil, errs.Auth("account %q not found; run `email auth login -a %s --provider <msgraph|gmail|imap>`", alias, alias)
 	}
 	if err != nil {
 		return nil, err

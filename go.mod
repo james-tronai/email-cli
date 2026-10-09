@@ -5,6 +5,9 @@ go 1.27.1
 require (
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.10.1
 	github.com/BurntSushi/toml v1.6.0
+	github.com/emersion/go-imap/v2 v2.0.0-beta.8
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
+	github.com/emersion/go-smtp v0.25.0
 	github.com/itchyny/gojq v0.12.19
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.59.0
@@ -12,6 +15,7 @@ require (
 )
 
 require (
+	github.com/emersion/go-message v0.18.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
