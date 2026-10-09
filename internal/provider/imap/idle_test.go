@@ -106,3 +106,30 @@ func TestGmailIdleThenSync(t *testing.T) {
 		}
 	}
 }
+
+// Mail the server reports during another command (as an untagged EXISTS)
+// is not reported again in IDLE: Idle must return at once for it.
+func TestIdleReturnsForMailReportedDuringSync(t *testing.T) {
+	e := newMemEnv(t, policy.ModeRead, true)
+	ctx := context.Background()
+	base, err := e.p.Sync(ctx, provider.SyncOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.deliver(t, "INBOX", lunchMsg)
+	if _, err := e.p.search(ctx, "INBOX", raw("ALL")); err != nil { // any command picks up the EXISTS
+		t.Fatal(err)
+	}
+	if !e.p.c.newMail {
+		t.Fatal("EXISTS during a command was not noticed")
+	}
+	start := time.Now()
+	woke, err := e.p.Idle(ctx, 10*time.Second)
+	if err != nil || !woke || time.Since(start) > time.Second {
+		t.Fatalf("woke=%v err=%v after %v", woke, err, time.Since(start))
+	}
+	res, err := e.p.Sync(ctx, provider.SyncOptions{State: base.State})
+	if err != nil || len(res.Messages) != 1 {
+		t.Fatalf("%+v %v", res, err)
+	}
+}

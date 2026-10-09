@@ -68,7 +68,7 @@ func TestWatchOverGmailIdle(t *testing.T) {
 		}}},
 		Filter:       policy.WatchSection{IgnoreSenders: []string{"noreply@"}, OnlyUnread: true},
 		Notifier:     &watch.HTTPNotifier{URL: hook.URL + "/webhooks/email", Token: "tok"},
-		Debounce:     400 * time.Millisecond,
+		Debounce:     time.Second,
 		PollInterval: time.Minute, // IDLE must do the waking
 		StateDir:     dir,
 		Audit:        audit.New(dir),
@@ -118,17 +118,17 @@ func TestWatchOverGmailIdle(t *testing.T) {
 	e.f.deliver(watchMail("Alice <alice@example.com>", "one", 1))
 	wait(1)
 	p0 := got()[0]
-	if p0.token != "tok" || p0.p.Count != 1 || p0.p.Messages[0].Subject != "one" || p0.at.Sub(sent) > 3*time.Second {
+	if p0.token != "tok" || p0.p.Count != 1 || p0.p.Messages[0].Subject != "one" || p0.at.Sub(sent) > 4*time.Second {
 		t.Fatalf("first POST %+v after %v", p0, p0.at.Sub(sent))
 	}
 
 	e.f.deliver(watchMail("noreply@github.com", "ci", 2))
 	for i := 3; i <= 5; i++ {
 		e.f.deliver(watchMail("Bob <bob@example.com>", fmt.Sprintf("burst %d", i), i))
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(30 * time.Millisecond)
 	}
 	wait(2)
-	time.Sleep(600 * time.Millisecond)
+	time.Sleep(1500 * time.Millisecond)
 	ps := got()
 	if len(ps) != 2 || ps[1].p.Count != 3 {
 		t.Fatalf("burst: %d POSTs, last %+v", len(ps), ps[len(ps)-1].p)

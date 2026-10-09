@@ -218,6 +218,8 @@ type gmSession struct {
 	authed   bool
 	selected *gmBox
 	readOnly bool
+	// told is the message count this session last reported (EXISTS).
+	told int
 }
 
 func (f *fakeGmail) serve(nc net.Conn) {
@@ -281,7 +283,9 @@ func (s *gmSession) idle() {
 		msgs, _ := s.f.view(s.selected)
 		return len(msgs)
 	}
-	n := count()
+	// Like Gmail, mail that arrived since the session was last told about
+	// the mailbox is reported as soon as IDLE starts.
+	n := s.told
 	s.c.w.WriteString("+ idling\r\n")
 	s.c.w.Flush()
 	done := make(chan struct{})
@@ -300,6 +304,7 @@ func (s *gmSession) idle() {
 		}
 		if m := count(); m > n {
 			n = m
+			s.told = n
 			s.out("* %d EXISTS", n)
 			s.c.w.Flush()
 		}
@@ -354,6 +359,7 @@ func (s *gmSession) handle(cmd string, args []any) (string, string) {
 		s.out(`* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)`)
 		s.out("* OK [UIDVALIDITY %d] UIDs valid.", box.validity)
 		s.out("* %d EXISTS", len(msgs))
+		s.told = len(msgs)
 		s.out("* OK [UIDNEXT %d] Predicted next UID.", box.uidNext)
 		s.out("* OK [HIGHESTMODSEQ %d]", f.modseq)
 		if s.readOnly {

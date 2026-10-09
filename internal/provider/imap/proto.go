@@ -72,6 +72,10 @@ type conn struct {
 	uidNext     uint32
 	modSeq      uint64
 	exists      uint32
+	// newMail is set when the server reports more messages in the
+	// selected mailbox (an untagged EXISTS during any command). A server
+	// reports each arrival once, so Idle must not wait while it is set.
+	newMail bool
 }
 
 // STARTTLS ports; every other port speaks implicit TLS. Plain text is
@@ -303,7 +307,27 @@ func (c *conn) run(ctx context.Context, args ...any) ([]*response, error) {
 		case r.Tag == "*" && r.Status == "BYE":
 			return nil, errs.Provider("bye", fmt.Errorf("IMAP server closed the connection: %s", r.Text))
 		case r.Tag == "*":
+			c.track(r)
 			untagged = append(untagged, r)
+		}
+	}
+}
+
+// track follows the selected mailbox's size through unsolicited EXISTS
+// and EXPUNGE responses.
+func (c *conn) track(r *response) {
+	if c.selected == "" {
+		return // SELECT itself: selectBox reads its EXISTS
+	}
+	switch r.Kind {
+	case "EXISTS":
+		if r.Num > c.exists {
+			c.newMail = true
+		}
+		c.exists = r.Num
+	case "EXPUNGE":
+		if c.exists > 0 {
+			c.exists--
 		}
 	}
 }
@@ -338,6 +362,9 @@ func (c *conn) idle(ctx context.Context, maxWait time.Duration) (woke bool, err 
 		if r.Tag == tag {
 			stop()
 			return false, statusErr(r)
+		}
+		if r.Tag == "*" {
+			c.track(r)
 		}
 		if r.Kind == "EXISTS" || r.Kind == "RECENT" {
 			woke = true
@@ -398,6 +425,9 @@ func (c *conn) idle(ctx context.Context, maxWait time.Duration) (woke bool, err 
 		case x := <-ch:
 			if x.err != nil {
 				return woke, netErr(context.Background(), "read", x.err)
+			}
+			if x.r.Tag == "*" {
+				c.track(x.r)
 			}
 			switch {
 			case x.r.Tag == tag:

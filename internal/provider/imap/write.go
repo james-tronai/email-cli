@@ -356,7 +356,14 @@ func (p *Provider) Idle(ctx context.Context, maxWait time.Duration) (bool, error
 	if c, err = p.selectBox(ctx, "INBOX", false); err != nil {
 		return false, err
 	}
-	return c.idle(ctx, maxWait)
+	if c.newMail {
+		// Reported during the last sync, possibly after its STATUS.
+		c.newMail = false
+		return true, nil
+	}
+	woke, err := c.idle(ctx, maxWait)
+	c.newMail = false
+	return woke, err
 }
 
 func (p *Provider) Sync(ctx context.Context, o provider.SyncOptions) (*provider.SyncResult, error) {
@@ -377,6 +384,13 @@ func (p *Provider) Sync(ctx context.Context, o provider.SyncOptions) (*provider.
 			return nil, errs.Usage("sync state is for mailbox %s, not %s; use another --state-file", prev.Mailbox, box)
 		}
 	}
+	// Open the mailbox before reading its status: from here on the server
+	// reports every arrival on this connection (see Idle).
+	c, err := p.selectBox(ctx, box, false)
+	if err != nil {
+		return nil, err
+	}
+	c.newMail = false
 	cur, err := p.status(ctx, box)
 	if err != nil {
 		return nil, err
