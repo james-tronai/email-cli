@@ -15,9 +15,14 @@ import (
 	"time"
 
 	"github.com/james-tronai/email-cli/internal/errs"
+	"github.com/james-tronai/email-cli/internal/mailmime"
 	"github.com/james-tronai/email-cli/internal/provider"
 	"github.com/james-tronai/email-cli/internal/render"
 )
+
+// MaxMessageSize is Gmail's limit for a message including attachments
+// (after base64 encoding) through the upload endpoint.
+const MaxMessageSize = 35 << 20
 
 // maxQuoted caps the original text quoted into a reply or forward.
 const maxQuoted = 100000
@@ -74,8 +79,8 @@ func (p *Provider) draftResult(ctx context.Context, d *gDraft) (*provider.Messag
 func (p *Provider) self() provider.Address { return provider.Address{Email: p.username} }
 
 func (p *Provider) CreateDraft(ctx context.Context, in provider.DraftInput) (*provider.Message, error) {
-	o := outgoing{From: p.self(), To: in.To, Cc: in.Cc, Bcc: in.Bcc, Subject: in.Subject, Body: in.Body, Attachments: in.Attachments}
-	raw, err := o.build()
+	o := mailmime.Outgoing{From: p.self(), To: in.To, Cc: in.Cc, Bcc: in.Bcc, Subject: in.Subject, Body: in.Body, Attachments: in.Attachments}
+	raw, err := o.Build(MaxMessageSize, "Gmail")
 	if err != nil {
 		return nil, err
 	}
@@ -119,26 +124,9 @@ func (p *Provider) loadOriginal(ctx context.Context, id string) (*original, erro
 
 func (o *original) dateString() string {
 	if d := o.g.Payload.header("Date"); d != "" {
-		return decodeHeader(d)
+		return mailmime.DecodeHeader(d)
 	}
 	return o.msg.Date.Format("Mon, 2 Jan 2006 15:04:05 -0700")
-}
-
-// dedupe drops empty addresses, the mailbox itself, and repeats.
-func dedupe(self string, lists ...[]provider.Address) []provider.Address {
-	seen := map[string]bool{strings.ToLower(self): true}
-	var out []provider.Address
-	for _, l := range lists {
-		for _, a := range l {
-			k := strings.ToLower(a.Email)
-			if k == "" || seen[k] {
-				continue
-			}
-			seen[k] = true
-			out = append(out, a)
-		}
-	}
-	return out
 }
 
 // CreateReplyDraft builds the reply locally (Gmail has no server-side
@@ -156,21 +144,21 @@ func (p *Provider) CreateReplyDraft(ctx context.Context, in provider.ReplyInput)
 	if strings.EqualFold(o.msg.From.Email, p.username) {
 		to = o.msg.To // replying to our own sent message: same recipients
 	}
-	to = dedupe(p.username, to)
+	to = mailmime.Dedupe(p.username, to)
 	var cc []provider.Address
 	if in.All {
-		cc = dedupe(p.username, to, o.msg.To, o.msg.Cc)[len(to):]
+		cc = mailmime.Dedupe(p.username, to, o.msg.To, o.msg.Cc)[len(to):]
 	}
 	if len(to) == 0 && len(cc) == 0 {
 		return nil, errs.Usage("message %s has no one to reply to", in.MessageID)
 	}
 	body := in.Body
 	if strings.TrimSpace(o.text) != "" {
-		body = strings.TrimRight(body, "\n") + "\n\nOn " + o.dateString() + ", " + o.msg.From.String() + " wrote:\n" + quote(o.text) + "\n"
+		body = strings.TrimRight(body, "\n") + "\n\nOn " + o.dateString() + ", " + o.msg.From.String() + " wrote:\n" + mailmime.Quote(o.text) + "\n"
 	}
-	out := outgoing{From: p.self(), To: to, Cc: cc, Subject: replySubject(o.msg.Subject), Body: body,
-		InReplyTo: o.messageID, References: references(o.refs, o.messageID), Attachments: in.Attachments}
-	raw, err := out.build()
+	out := mailmime.Outgoing{From: p.self(), To: to, Cc: cc, Subject: mailmime.ReplySubject(o.msg.Subject), Body: body,
+		InReplyTo: o.messageID, References: mailmime.References(o.refs, o.messageID), Attachments: in.Attachments}
+	raw, err := out.Build(MaxMessageSize, "Gmail")
 	if err != nil {
 		return nil, err
 	}
@@ -196,10 +184,10 @@ func (p *Provider) CreateForwardDraft(ctx context.Context, in provider.ForwardIn
 	b.WriteString("---------- Forwarded message ---------\n")
 	fmt.Fprintf(&b, "From: %s\nDate: %s\nSubject: %s\n", o.msg.From.String(), o.dateString(), o.msg.Subject)
 	if len(o.msg.To) > 0 {
-		fmt.Fprintf(&b, "To: %s\n", formatAddrs(o.msg.To))
+		fmt.Fprintf(&b, "To: %s\n", mailmime.FormatAddrs(o.msg.To))
 	}
 	if len(o.msg.Cc) > 0 {
-		fmt.Fprintf(&b, "Cc: %s\n", formatAddrs(o.msg.Cc))
+		fmt.Fprintf(&b, "Cc: %s\n", mailmime.FormatAddrs(o.msg.Cc))
 	}
 	b.WriteString("\n")
 	b.WriteString(o.text)
@@ -207,9 +195,9 @@ func (p *Provider) CreateForwardDraft(ctx context.Context, in provider.ForwardIn
 	if err != nil {
 		return nil, err
 	}
-	out := outgoing{From: p.self(), To: in.To, Subject: forwardSubject(o.msg.Subject), Body: b.String(),
-		InReplyTo: o.messageID, References: references(o.refs, o.messageID), Attachments: atts}
-	raw, err := out.build()
+	out := mailmime.Outgoing{From: p.self(), To: in.To, Subject: mailmime.ForwardSubject(o.msg.Subject), Body: b.String(),
+		InReplyTo: o.messageID, References: mailmime.References(o.refs, o.messageID), Attachments: atts}
+	raw, err := out.Build(MaxMessageSize, "Gmail")
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +275,7 @@ func (p *Provider) UpdateDraft(ctx context.Context, id string, u provider.DraftU
 	}
 	cur := p.convert(d.Message, nil)
 	pl := d.Message.Payload
-	out := outgoing{From: p.self(), To: cur.To, Cc: cur.Cc, Bcc: cur.Bcc, Subject: cur.Subject, Body: cur.BodyText,
+	out := mailmime.Outgoing{From: p.self(), To: cur.To, Cc: cur.Cc, Bcc: cur.Bcc, Subject: cur.Subject, Body: cur.BodyText,
 		InReplyTo: pl.header("In-Reply-To"), References: pl.header("References")}
 	if out.Body == "" && strings.TrimSpace(cur.BodyHTML) != "" {
 		out.Body, _ = render.HTMLToText(cur.BodyHTML)
@@ -311,7 +299,7 @@ func (p *Provider) UpdateDraft(ctx context.Context, id string, u provider.DraftU
 		return nil, err
 	}
 	out.Attachments = append(out.Attachments, u.Attachments...)
-	raw, err := out.build()
+	raw, err := out.Build(MaxMessageSize, "Gmail")
 	if err != nil {
 		return nil, err
 	}

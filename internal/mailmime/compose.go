@@ -1,4 +1,6 @@
-package gmail
+// Package mailmime writes and reads RFC 5322 / MIME messages for the
+// providers that deal in raw messages (gmail drafts, imap).
+package mailmime
 
 import (
 	"bytes"
@@ -16,24 +18,21 @@ import (
 	"github.com/james-tronai/email-cli/internal/provider"
 )
 
-// MaxMessageSize is Gmail's limit for a message including attachments
-// (after base64 encoding) through the upload endpoint.
-const MaxMessageSize = 35 << 20
-
-// outgoing is a message to be written as RFC 822 for drafts.create/update.
-type outgoing struct {
+// Outgoing is a message to be written as RFC 822.
+type Outgoing struct {
 	From        provider.Address
 	To, Cc, Bcc []provider.Address
 	Subject     string
 	Body        string // plain text
 	InReplyTo   string
 	References  string
+	MessageID   string // "<…>"; empty: none (the server or the submit step adds one)
 	Attachments []provider.AttachmentFile
 	Date        time.Time
 }
 
-// noCRLF removes line breaks so a value cannot inject headers.
-func noCRLF(s string) string {
+// NoCRLF removes line breaks so a value cannot inject headers.
+func NoCRLF(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r == '\r' || r == '\n' {
 			return ' '
@@ -42,27 +41,38 @@ func noCRLF(s string) string {
 	}, s)
 }
 
-func formatAddrs(as []provider.Address) string {
+func FormatAddrs(as []provider.Address) string {
 	parts := make([]string, 0, len(as))
 	for _, a := range as {
 		if a.Email == "" {
 			continue
 		}
-		ma := mail.Address{Name: noCRLF(a.Name), Address: noCRLF(a.Email)}
+		ma := mail.Address{Name: NoCRLF(a.Name), Address: NoCRLF(a.Email)}
 		parts = append(parts, ma.String())
 	}
 	return strings.Join(parts, ", ")
 }
 
-func randomBoundary() string {
-	var b [12]byte
-	_, _ = rand.Read(b[:])
-	return "email-cli-" + hex.EncodeToString(b[:])
+func randomHex(n int) string {
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
-// build serialises the message. Text goes out as UTF-8 quoted-printable;
-// with attachments the message is multipart/mixed.
-func (o *outgoing) build() ([]byte, error) {
+func randomBoundary() string { return "email-cli-" + randomHex(12) }
+
+// NewMessageID returns a fresh "<random@domain>" Message-ID.
+func NewMessageID(domain string) string {
+	if domain == "" {
+		domain = "email-cli.invalid"
+	}
+	return "<" + randomHex(16) + "@" + domain + ">"
+}
+
+// Build serialises the message. Text goes out as UTF-8 quoted-printable;
+// with attachments the message is multipart/mixed. maxSize > 0 limits the
+// result.
+func (o *Outgoing) Build(maxSize int, server string) ([]byte, error) {
 	var buf bytes.Buffer
 	hdr := func(k, v string) {
 		if v != "" {
@@ -73,14 +83,15 @@ func (o *outgoing) build() ([]byte, error) {
 	if date.IsZero() {
 		date = time.Now()
 	}
-	hdr("From", formatAddrs([]provider.Address{o.From}))
-	hdr("To", formatAddrs(o.To))
-	hdr("Cc", formatAddrs(o.Cc))
-	hdr("Bcc", formatAddrs(o.Bcc))
-	hdr("Subject", mime.QEncoding.Encode("utf-8", noCRLF(o.Subject)))
+	hdr("From", FormatAddrs([]provider.Address{o.From}))
+	hdr("To", FormatAddrs(o.To))
+	hdr("Cc", FormatAddrs(o.Cc))
+	hdr("Bcc", FormatAddrs(o.Bcc))
+	hdr("Subject", mime.QEncoding.Encode("utf-8", NoCRLF(o.Subject)))
 	hdr("Date", date.Format(time.RFC1123Z))
-	hdr("In-Reply-To", noCRLF(o.InReplyTo))
-	hdr("References", noCRLF(o.References))
+	hdr("Message-ID", NoCRLF(o.MessageID))
+	hdr("In-Reply-To", NoCRLF(o.InReplyTo))
+	hdr("References", NoCRLF(o.References))
 	hdr("MIME-Version", "1.0")
 
 	if len(o.Attachments) == 0 {
@@ -99,8 +110,8 @@ func (o *outgoing) build() ([]byte, error) {
 		}
 		fmt.Fprintf(&buf, "\r\n--%s--\r\n", boundary)
 	}
-	if buf.Len() > MaxMessageSize {
-		return nil, errs.Unsupported("the message is %d bytes; Gmail accepts at most %d", buf.Len(), MaxMessageSize)
+	if maxSize > 0 && buf.Len() > maxSize {
+		return nil, errs.Unsupported("the message is %d bytes; %s accepts at most %d", buf.Len(), server, maxSize)
 	}
 	return buf.Bytes(), nil
 }
@@ -115,11 +126,14 @@ func writeTextPart(buf *bytes.Buffer, body string) {
 }
 
 func writeAttachment(buf *bytes.Buffer, a provider.AttachmentFile) error {
-	ctype := firstNonEmpty(a.MIME, "application/octet-stream")
+	ctype := a.MIME
+	if ctype == "" {
+		ctype = "application/octet-stream"
+	}
 	if _, _, err := mime.ParseMediaType(ctype); err != nil {
 		ctype = "application/octet-stream"
 	}
-	name := noCRLF(a.Name)
+	name := NoCRLF(a.Name)
 	fmt.Fprintf(buf, "Content-Type: %s\r\n", mime.FormatMediaType(ctype, map[string]string{"name": name}))
 	fmt.Fprintf(buf, "Content-Disposition: %s\r\n", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	buf.WriteString("Content-Transfer-Encoding: base64\r\n\r\n")
@@ -133,8 +147,8 @@ func writeAttachment(buf *bytes.Buffer, a provider.AttachmentFile) error {
 	return nil
 }
 
-// replySubject adds "Re: " unless the subject already has a reply prefix.
-func replySubject(s string) string {
+// ReplySubject adds "Re: " unless the subject already has a reply prefix.
+func ReplySubject(s string) string {
 	t := strings.TrimSpace(s)
 	if strings.HasPrefix(strings.ToLower(t), "re:") {
 		return t
@@ -142,7 +156,7 @@ func replySubject(s string) string {
 	return "Re: " + t
 }
 
-func forwardSubject(s string) string {
+func ForwardSubject(s string) string {
 	t := strings.TrimSpace(s)
 	low := strings.ToLower(t)
 	if strings.HasPrefix(low, "fwd:") || strings.HasPrefix(low, "fw:") {
@@ -151,8 +165,8 @@ func forwardSubject(s string) string {
 	return "Fwd: " + t
 }
 
-// references appends msgID to the original References chain.
-func references(orig, msgID string) string {
+// References appends msgID to the original References chain.
+func References(orig, msgID string) string {
 	orig = strings.TrimSpace(orig)
 	if msgID == "" {
 		return orig
@@ -166,8 +180,8 @@ func references(orig, msgID string) string {
 	return orig + " " + msgID
 }
 
-// quote prefixes each line with "> ".
-func quote(text string) string {
+// Quote prefixes each line with "> ".
+func Quote(text string) string {
 	text = strings.TrimRight(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 	lines := strings.Split(text, "\n")
 	for i, l := range lines {
@@ -178,4 +192,30 @@ func quote(text string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// Dedupe drops empty addresses, the mailbox itself, and repeats.
+func Dedupe(self string, lists ...[]provider.Address) []provider.Address {
+	seen := map[string]bool{strings.ToLower(self): true}
+	var out []provider.Address
+	for _, l := range lists {
+		for _, a := range l {
+			k := strings.ToLower(a.Email)
+			if k == "" || seen[k] {
+				continue
+			}
+			seen[k] = true
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// Snippet collapses whitespace and keeps the first 200 characters.
+func Snippet(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > 200 {
+		return string(r[:200])
+	}
+	return s
 }

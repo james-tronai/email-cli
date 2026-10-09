@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/net/html/charset"
 
+	"github.com/james-tronai/email-cli/internal/mailmime"
 	"github.com/james-tronai/email-cli/internal/provider"
 )
 
@@ -182,55 +183,6 @@ func findPart(payload *gPart, partID string) *gPart {
 	return hit
 }
 
-func parseAddr(s string) provider.Address {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return provider.Address{}
-	}
-	if a, err := (&mail.AddressParser{WordDecoder: wordDecoder}).Parse(s); err == nil {
-		return provider.Address{Name: a.Name, Email: a.Address}
-	}
-	return provider.Address{Email: s}
-}
-
-func parseAddrList(s string) []provider.Address {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
-	}
-	list, err := (&mail.AddressParser{WordDecoder: wordDecoder}).ParseList(s)
-	if err != nil {
-		// Malformed list: keep the raw text rather than dropping recipients.
-		var out []provider.Address
-		for _, x := range strings.Split(s, ",") {
-			if x = strings.TrimSpace(x); x != "" {
-				out = append(out, parseAddr(x))
-			}
-		}
-		return out
-	}
-	out := make([]provider.Address, len(list))
-	for i, a := range list {
-		out[i] = provider.Address{Name: a.Name, Email: a.Address}
-	}
-	return out
-}
-
-var wordDecoder = &mime.WordDecoder{CharsetReader: charset.NewReaderLabel}
-
-func decodeHeader(s string) string {
-	if d, err := wordDecoder.DecodeHeader(s); err == nil {
-		return d
-	}
-	return s
-}
-
-// headerAllow is what --headers returns.
-var headerAllow = map[string]bool{
-	"message-id": true, "in-reply-to": true, "references": true, "authentication-results": true,
-	"return-path": true, "list-unsubscribe": true, "reply-to": true,
-}
-
 // systemLabels maps Gmail system label ids to reserved names. Labels not
 // listed here (UNREAD, STARRED, IMPORTANT, CATEGORY_*) become flags or are
 // dropped.
@@ -276,13 +228,13 @@ func (p *Provider) convert(g *gMessage, names map[string]string) provider.Messag
 		ThreadID: g.ThreadID,
 		Provider: Name,
 		Account:  p.alias,
-		From:     parseAddr(pl.header("From")),
-		To:       parseAddrList(pl.header("To")),
-		Cc:       parseAddrList(pl.header("Cc")),
-		Bcc:      parseAddrList(pl.header("Bcc")),
-		ReplyTo:  parseAddrList(pl.header("Reply-To")),
-		Subject:  decodeHeader(pl.header("Subject")),
-		Snippet:  snippet(html.UnescapeString(g.Snippet)),
+		From:     mailmime.ParseAddr(pl.header("From")),
+		To:       mailmime.ParseAddrList(pl.header("To")),
+		Cc:       mailmime.ParseAddrList(pl.header("Cc")),
+		Bcc:      mailmime.ParseAddrList(pl.header("Bcc")),
+		ReplyTo:  mailmime.ParseAddrList(pl.header("Reply-To")),
+		Subject:  mailmime.DecodeHeader(pl.header("Subject")),
+		Snippet:  mailmime.Snippet(html.UnescapeString(g.Snippet)),
 		WebLink:  messageLink(g.ID),
 		Flags: provider.Flags{
 			Unread:  hasLabel(g.LabelIDs, "UNREAD"),
@@ -323,7 +275,7 @@ func (p *Provider) convert(g *gMessage, names map[string]string) provider.Messag
 		h := map[string]string{}
 		for _, x := range pl.Headers {
 			k := textproto.CanonicalMIMEHeaderKey(x.Name)
-			if _, dup := h[k]; !dup && headerAllow[strings.ToLower(x.Name)] {
+			if _, dup := h[k]; !dup && mailmime.HeaderAllow[strings.ToLower(x.Name)] {
 				h[k] = x.Value
 			}
 		}
@@ -332,12 +284,4 @@ func (p *Provider) convert(g *gMessage, names map[string]string) provider.Messag
 		}
 	}
 	return m
-}
-
-func snippet(s string) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if r := []rune(s); len(r) > 200 {
-		return string(r[:200])
-	}
-	return s
 }
