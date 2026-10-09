@@ -7,7 +7,7 @@ Status: **M3**. Both providers do read + draft:
 - **Microsoft 365** (Graph): browser login (auth code + PKCE, `--manual` for headless), list, search, get, thread, attachments, drafts (create/reply/forward/update/delete), move, categories, mark and delta sync. Setup: [docs/microsoft-365-setup.md](docs/microsoft-365-setup.md).
 - **Google Workspace** (Gmail API): the same commands, with the same login flow. Labels map onto the reserved names, `search` takes Gmail query syntax, and sync uses `history.list`. Setup: [docs/google-workspace-setup.md](docs/google-workspace-setup.md).
 
-Send is M4.
+`email send` (M4) sends an existing draft, in both providers. It only works when both the policy and the account login are in mode `send`. See [Sending](#sending).
 
 ## Quick try (fake mailbox)
 
@@ -34,6 +34,21 @@ mkdir -p .tmp/cfg && cp docs/policy.example.toml .tmp/cfg/policy.toml   # withou
   - Bodies are truncated at 20 000 characters.
   - Attachments are only saved by an explicit `download`, with sanitized names and mode 0600.
 - **Trash and delete** are disabled unless `[delete] enabled = true`. Draft deletion is always allowed.
+
+## Sending
+
+`email send <draft-id>` sends a draft that already exists. There is no command that composes and sends in one step. The body goes out exactly as it is on the server: the signoff was added when the draft was written.
+
+- **When it is available**: only when the policy says `mode = "send"` **and** the account logged in with `--mode send`. Otherwise it exits 4 before any network call.
+- **Recipient rules**: checked against the draft as it is on the server at send time (to + cc + bcc), so edits made after the draft was created count. The rules come from `[send]` in the policy file:
+  - `allowed_recipient_domains`: every recipient must be in one of these domains. An empty list means no restriction.
+  - `max_recipients`: at most this many recipients. 0 means unlimited.
+  - `require_reply_context`: the draft must be a reply or forward, meaning its thread holds a message that is not a draft. A brand-new message is refused.
+- **Idempotency**: `--idempotency-key` defaults to the draft id. A key that was sent within the last 24 hours returns the first result with `"replayed": true` and sends nothing. While a send with the same key is running, another one exits 5 with `sendInProgress`. Records live in `<state dir>/send/`.
+- **Audit**: every send is written to `audit.jsonl` with its recipients and the sent message id. So is every denial and every replay.
+- **Enabling it**:
+  - Microsoft 365: add `Mail.Send` to the Entra app (with admin consent), log in again with `--mode send`, and set the policy mode to `send`.
+  - Gmail: the draft-mode token can already send, so the policy mode is the only switch.
 
 ## Exit codes
 

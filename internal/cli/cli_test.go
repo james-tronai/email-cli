@@ -205,3 +205,14 @@ func TestGmailLoginFlagChecks(t *testing.T) {
 		[]byte(`{"alias":"gw","provider":"gmail","mode":"draft","username":"james@tronai.com.au"}`), 0o600)
 	e.code(3, "list", "-a", "gw")
 }
+
+func TestSendNeedsSendModeAndASender(t *testing.T) {
+	e := newEnv(t, draftPolicy)
+	e.code(4, "send", "fake-0001") // policy draft
+	e2 := newEnv(t, "[default]\nmode = \"send\"\n")
+	e2.code(4, "send", "fake-0001") // the account logged in with --mode draft
+	e2.ok("auth", "login", "-a", "demo", "--provider", "fake", "--mode", "send", "--username", "james@tronai.com.au")
+	if m := e2.code(2, "send", "fake-0001"); !strings.Contains(m["error"].(map[string]any)["message"].(string), "does not support send") {
+		t.Fatalf("fake has no sender: %v", m)
+	}
+}

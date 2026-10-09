@@ -218,15 +218,6 @@ func (s *Service) Mark(ctx context.Context, id string, o provider.MarkOptions) (
 	return normalized(m, err)
 }
 
-// ---- send (M4) ----
-
-func (s *Service) Send(ctx context.Context, draftID, idempotencyKey string) (any, error) {
-	if _, err := s.gate(policy.Request{Op: policy.OpSend, HasReplyCtx: true}, draftID); err != nil {
-		return nil, err
-	}
-	return nil, errs.Unsupported("send is not implemented yet (milestone M4)")
-}
-
 // ---- sync ----
 
 type SyncOutput struct {

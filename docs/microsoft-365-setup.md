@@ -134,6 +134,16 @@ Tokens land in `$EMAIL_CONFIG_DIR/accounts/work/msal.json` (mode 0600; the direc
 
   Run the login command again; the alias, tenant and client ID are reused.
 
+## Enabling send
+
+`email send` needs a token that carries `Mail.Send`. Turning it on is a deliberate, three-part change:
+
+1. Entra: on the app → **API permissions** → **Add a permission** → Microsoft Graph → Delegated → `Mail.Send`, then **Grant admin consent**.
+2. Log in again with `--mode send`. A draft-mode login never asks for `Mail.Send`.
+3. Set `[default] mode = "send"` in the policy file, and review the `[send]` rules (`allowed_recipient_domains`, `max_recipients`, `require_reply_context`).
+
+The effective mode is the lower of the policy mode and the login mode, so any one of the three left undone keeps sending off. After step 1, a draft-mode token also carries `Mail.Send`, because Entra includes every consented permission. Login warns about this. Do step 1 only when you mean to send.
+
 ## Troubleshooting
 
 | Error | Cause / fix |
