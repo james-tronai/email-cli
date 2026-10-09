@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/james-tronai/email-cli/internal/errs"
 	"github.com/james-tronai/email-cli/internal/provider"
@@ -386,4 +387,25 @@ func (p *Provider) DeleteDraft(ctx context.Context, id string) error {
 	}
 	_, err = p.c.do(ctx, http.MethodDelete, userPath+"/drafts/"+pathEsc(draftID), nil, "")
 	return err
+}
+
+// Send sends an existing draft with drafts.send; Gmail deletes the draft
+// and returns the sent message.
+func (p *Provider) Send(ctx context.Context, id string) (*provider.SendResult, error) {
+	draftID, err := p.resolveDraftID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var g gMessage
+	if err := p.c.doJSON(ctx, http.MethodPost, userPath+"/drafts/send", map[string]string{"id": draftID}, &g); err != nil {
+		return nil, err
+	}
+	res := &provider.SendResult{MessageID: g.ID, ThreadID: g.ThreadID, SentAt: time.Now().UTC().Truncate(time.Second)}
+	// Best effort: the Message-ID Gmail assigned. The send already happened,
+	// so a failure here must not turn into an error.
+	var meta gMessage
+	if err := p.c.doJSON(ctx, http.MethodGet, userPath+"/messages/"+pathEsc(g.ID)+"?format=metadata&metadataHeaders=Message-ID", nil, &meta); err == nil {
+		res.InternetMessageID = meta.Payload.header("Message-Id")
+	}
+	return res, nil
 }

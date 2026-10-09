@@ -187,9 +187,15 @@ type SyncResult struct {
 	Initialized bool
 }
 
+// SendResult describes a sent draft. MessageID is the provider's id of the
+// sent message when the provider returns one (Gmail does; Graph does not,
+// because the sent copy gets a new id). InternetMessageID is the RFC 5322
+// Message-ID when known.
 type SendResult struct {
-	MessageID string    `json:"message_id,omitempty"`
-	SentAt    time.Time `json:"sent_at"`
+	MessageID         string    `json:"message_id,omitempty"`
+	InternetMessageID string    `json:"internet_message_id,omitempty"`
+	ThreadID          string    `json:"thread_id,omitempty"`
+	SentAt            time.Time `json:"sent_at"`
 }
 
 type RawRequest struct {

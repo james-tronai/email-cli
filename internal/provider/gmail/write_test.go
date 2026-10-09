@@ -372,3 +372,31 @@ func TestRawPathRestriction(t *testing.T) {
 
 func newQP(r io.Reader) io.Reader  { return quotedprintable.NewReader(r) }
 func newB64(r io.Reader) io.Reader { return base64.NewDecoder(base64.StdEncoding, r) }
+
+func TestSendDraft(t *testing.T) {
+	f := newFakeGmail(t)
+	f.on(route{method: "GET", path: u + "/drafts", fixture: "drafts_list.json"})
+	f.on(route{method: "POST", path: u + "/drafts/send", body: `{"id":"18f0f0f0f0f0f0f1","threadId":"18f0a1b2c3d4e5f0","labelIds":["SENT"]}`})
+	f.on(route{method: "GET", path: u + "/messages/18f0f0f0f0f0f0f1", body: `{"id":"18f0f0f0f0f0f0f1","payload":{"headers":[{"name":"Message-ID","value":"<CAsent@mail.gmail.com>"}]}}`})
+	p, _ := f.provider(t)
+
+	// Addressed by the draft's message id; drafts.send needs the draft id.
+	res, err := p.Send(ctx, "18f0d0d0d0d0d001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]string
+	_ = json.Unmarshal([]byte(f.one("POST", u+"/drafts/send").Body), &body)
+	if body["id"] != draftID {
+		t.Fatalf("send body: %v", body)
+	}
+	if res.MessageID != "18f0f0f0f0f0f0f1" || res.ThreadID != "18f0a1b2c3d4e5f0" || res.InternetMessageID != "<CAsent@mail.gmail.com>" {
+		t.Fatalf("result: %+v", res)
+	}
+	if _, err := p.Send(ctx, "18f0a1b2c3d4e5f1"); errs.ExitCode(err) != errs.ExitUsage {
+		t.Fatalf("sending a non-draft: %v", err)
+	}
+	if len(f.find("POST", u+"/drafts/send")) != 1 {
+		t.Fatal("a non-draft was sent")
+	}
+}

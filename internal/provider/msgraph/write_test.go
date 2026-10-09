@@ -275,3 +275,30 @@ func TestScopesByMode(t *testing.T) {
 		t.Fatal(authority(""))
 	}
 }
+
+func TestSendDraft(t *testing.T) {
+	f := newFakeGraph(t)
+	f.on(route{method: "GET", path: "/me/messages/AAMkAD-draft-1", body: `{"isDraft":true,"internetMessageId":"<draft-1@tronai.example>","conversationId":"AAQkAD-conv"}`})
+	f.on(route{method: "POST", path: "/me/messages/AAMkAD-draft-1/send", status: 202})
+	f.on(route{method: "GET", path: "/me/messages/AAMkAD-msg-2", body: `{"isDraft":false}`})
+	p, _ := f.provider(t)
+
+	res, err := p.Send(ctx, "AAMkAD-draft-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.InternetMessageID != "<draft-1@tronai.example>" || res.ThreadID != "AAQkAD-conv" || res.SentAt.IsZero() {
+		t.Fatalf("result: %+v", res)
+	}
+	if r := f.last(); r.Method != "POST" || r.Path != "/me/messages/AAMkAD-draft-1/send" || r.Body != "" {
+		t.Fatalf("send request: %+v", r)
+	}
+	if _, err := p.Send(ctx, "AAMkAD-msg-2"); errs.ExitCode(err) != errs.ExitUsage {
+		t.Fatalf("sending a received message: %v", err)
+	}
+	for _, r := range f.requests() {
+		if r.Path == "/me/messages/AAMkAD-msg-2/send" {
+			t.Fatal("a non-draft was sent")
+		}
+	}
+}

@@ -17,7 +17,7 @@ import (
 )
 
 // MaxSimpleAttachment is the largest attachment sent in one POST. Larger
-// files need an upload session (planned for M4).
+// files would need an upload session, which is not implemented.
 const MaxSimpleAttachment = 3 << 20
 
 func checkAttachments(files []provider.AttachmentFile) error {
@@ -243,6 +243,29 @@ func (p *Provider) patchMessage(ctx context.Context, id string, patch map[string
 	}
 	m := p.convert(&g, p.labelForFolder(ctx, g.ParentFolderID))
 	return &m, nil
+}
+
+// ---- send ----
+
+// Send sends an existing draft. Graph answers 202 with no body and the
+// sent copy gets a new id, so the result carries the draft's
+// internetMessageId (assigned when the draft was created) instead.
+func (p *Provider) Send(ctx context.Context, id string) (*provider.SendResult, error) {
+	var g struct {
+		IsDraft           bool   `json:"isDraft"`
+		InternetMessageID string `json:"internetMessageId"`
+		ConversationID    string `json:"conversationId"`
+	}
+	if err := p.c.doJSON(ctx, http.MethodGet, msgPath(id)+"?$select=isDraft,internetMessageId,conversationId", nil, &g, nil); err != nil {
+		return nil, err
+	}
+	if !g.IsDraft {
+		return nil, errs.Usage("%s is not a draft", id)
+	}
+	if _, err := p.c.do(ctx, http.MethodPost, msgPath(id)+"/send", nil, nil); err != nil {
+		return nil, err
+	}
+	return &provider.SendResult{InternetMessageID: g.InternetMessageID, ThreadID: g.ConversationID, SentAt: time.Now().UTC().Truncate(time.Second)}, nil
 }
 
 // ---- sync (delta) ----
