@@ -1,10 +1,12 @@
 # Google Workspace setup
 
+> **Google Workspace accounts only.** The "Internal" OAuth app this guide uses exists only in a Workspace organization. For a personal `@gmail.com` account, use provider `imap` with an app password: [gmail-personal-setup.md](gmail-personal-setup.md).
+
 `email` uses the Gmail REST API with an OAuth client of type **Desktop app**. It acts as one signed-in user.
 
 Login uses OAuth 2.0 **authorization code + PKCE** with a `http://localhost:<port>/callback` redirect: the same flow, and the same `--manual` paste-back for headless machines, as Microsoft 365. Google's device code flow does not support Gmail scopes, so there is no `--flow device` for Gmail.
 
-This guide is for **Google Workspace** accounts. Personal `@gmail.com` accounts can only use an "External" app; an unpublished External app expires refresh tokens after 7 days, and publishing one with Gmail scopes requires Google's restricted-scope verification. A personal Gmail backend (IMAP with an app password) is planned for a later milestone.
+This guide is for **Google Workspace** accounts. Personal `@gmail.com` accounts can only use an "External" app; an unpublished External app expires refresh tokens after 7 days, and publishing one with Gmail scopes requires Google's restricted-scope verification. Personal accounts use the IMAP backend instead: see [gmail-personal-setup.md](gmail-personal-setup.md).
 
 Setup has two parts: create the OAuth client once per Workspace, then log in once per mailbox.
 

@@ -1,6 +1,6 @@
 ---
 name: email
-description: Read, search, triage and draft email in Microsoft 365 and Google Workspace mailboxes with the `email` CLI. Use when asked to check mail, find a message, summarise a thread, prepare a reply or forward, file/label mail, or (only where the policy allows) send a draft.
+description: Read, search, triage and draft email in Microsoft 365, Google Workspace and personal Gmail (IMAP) mailboxes with the `email` CLI. Use when asked to check mail, find a message, summarise a thread, prepare a reply or forward, file/label mail, or (only where the policy allows) send a draft.
 ---
 
 # email
@@ -30,7 +30,7 @@ email accounts list         # configured accounts; -a <alias> picks one
 email list --limit 20                          # inbox, newest first
 email list --unread --since 2026-10-01T00:00:00Z
 email list --label archive                     # inbox | archive | sent | drafts | trash | spam | <label/folder name>
-email search "invoice from:acme"               # provider syntax: KQL on Microsoft 365, Gmail search box syntax on Gmail
+email search "invoice from:acme"               # provider syntax: KQL on Microsoft 365, Gmail search box syntax on Gmail (API or IMAP)
 email get <id>                                 # one message with body_text (sanitised, max 20000 chars)
 email thread <thread_id>                       # whole conversation, oldest first
 email attachments list <id>
@@ -43,7 +43,7 @@ email attachments download <id> --out /tmp/mail-<id>   # only when needed; never
 - **`--jq`** filters JSON without a pipe:
   - `--jq '.messages[] | {id, from: .from.email, subject}'`
   - `--jq .web_link`
-- **IDs**: use ids exactly as returned. Microsoft 365 ids are long base64 strings; Gmail ids are hex, and Gmail draft ids start with `r`.
+- **IDs**: use ids exactly as returned. Microsoft 365 ids are long base64 strings; Gmail ids are hex, and Gmail API draft ids start with `r`.
 
 ## New mail since last time
 
@@ -59,7 +59,7 @@ The first run only records a starting point and returns `initialized: true` with
 email draft reply <id> --body "Thanks, I'll have it by Friday."      # add --all for reply-all
 email draft forward <id> --to colleague@example.com --body "FYI"
 email draft create --to a@example.com --subject "Agenda" --body-file /tmp/body.txt
-email draft update <draft_id> --body-file /tmp/v2.txt                # only the fields you pass change
+email draft update <draft_id> --body-file /tmp/v2.txt                # only the fields you pass change; on imap the id changes
 email draft list
 email draft delete <draft_id>
 ```
@@ -103,10 +103,12 @@ Errors are JSON on stderr: `{"error":{"exit_code":4,"code":"policy_denied","mess
 
 ## Provider differences
 
-| | Microsoft 365 | Google Workspace |
-| --- | --- | --- |
-| search syntax | KQL: `subject:invoice from:acme` | Gmail: `subject:invoice from:acme newer_than:7d` |
-| labels | `inbox`/`archive`/… are folders (a message is in one); other labels are categories | everything is a label (a message can have several) |
-| `move --to archive` | moves to the Archive folder | removes the Inbox label |
-| draft ids | same kind as message ids | `r…` draft ids |
-| `web_link` | Outlook on the web | Gmail web (`mail.google.com/mail/u/0/…`) |
+| | Microsoft 365 (`msgraph`) | Google Workspace (`gmail`) | personal Gmail (`imap`) |
+| --- | --- | --- | --- |
+| search syntax | KQL: `subject:invoice from:acme` | Gmail: `subject:invoice from:acme newer_than:7d` | Gmail syntax, as for `gmail` |
+| labels | `inbox`/`archive`/… are folders (a message is in one); other labels are categories | everything is a label (a message can have several) | as for `gmail` |
+| `move --to archive` | moves to the Archive folder | removes the Inbox label | removes the Inbox label |
+| draft ids | same kind as message ids | `r…` draft ids | hex, like message ids; **`draft update` returns a new id**: use it for the next update or send |
+| `web_link` | Outlook on the web | Gmail web (`mail.google.com/mail/u/0/…`) | Gmail web |
+
+An `imap` account on a server other than Gmail has folders instead of labels (`email label` is unsupported), no `web_link`, and a simple search syntax: `from: to: cc: subject: body: in:<folder> is:unread since:YYYY-MM-DD` plus free words.

@@ -2,12 +2,17 @@
 
 A multi-account mail CLI for self-hosted agents. The agent gets least-privilege, audited access and works in draft-only mode by default. Output is JSON, and the CLI never prompts.
 
-Status: **M3**. Both providers do read + draft:
+Status: **M6**. Three providers, all with read, draft, organise, sync and send:
 
-- **Microsoft 365** (Graph): browser login (auth code + PKCE, `--manual` for headless), list, search, get, thread, attachments, drafts (create/reply/forward/update/delete), move, categories, mark and delta sync. Setup: [docs/microsoft-365-setup.md](docs/microsoft-365-setup.md).
-- **Google Workspace** (Gmail API): the same commands, with the same login flow. Labels map onto the reserved names, `search` takes Gmail query syntax, and sync uses `history.list`. Setup: [docs/google-workspace-setup.md](docs/google-workspace-setup.md).
+| provider | mailbox | login | setup |
+| --- | --- | --- | --- |
+| `msgraph` | Microsoft 365 (Graph) | browser, OAuth auth code + PKCE (`--manual` for headless) | [docs/microsoft-365-setup.md](docs/microsoft-365-setup.md) |
+| `gmail` | Google Workspace (Gmail API) | the same flow, with a GCP Desktop OAuth client | [docs/google-workspace-setup.md](docs/google-workspace-setup.md) |
+| `imap` | personal Gmail, or any IMAP/SMTP server | address + app password on stdin (`--password-stdin`) | [docs/gmail-personal-setup.md](docs/gmail-personal-setup.md) |
 
-`email send` (M4) sends an existing draft, in both providers. It only works when both the policy and the account login are in mode `send`. See [Sending](#sending).
+All three support list, search, get, thread, attachments, drafts (create/reply/forward/update/delete), move, label, mark, sync and send. `msgraph` has categories for labels and Outlook search syntax (KQL). `gmail` and `imap` on Gmail use Gmail labels and Gmail search syntax. `imap` on another server falls back to folders and plain IMAP `SEARCH`.
+
+`email send` (M4) sends an existing draft. It only works when both the policy and the account login are in mode `send`. See [Sending](#sending).
 
 ## Quick try (fake mailbox)
 
@@ -24,7 +29,7 @@ mkdir -p .tmp/cfg && cp docs/policy.example.toml .tmp/cfg/policy.toml   # withou
 
 ## Safety model
 
-- **Modes** `read` < `draft` < `send`. The effective mode is the lower of the policy mode and the mode the account logged in with. Login only requests the scopes that mode needs, so a draft-mode M365 token has no `Mail.Send`. Gmail is different: no Gmail scope can create drafts without also being able to send (`gmail.modify` can send), so on Gmail only the CLI's policy gate blocks sending.
+- **Modes** `read` < `draft` < `send`. The effective mode is the lower of the policy mode and the mode the account logged in with. Login only requests the scopes that mode needs, so a draft-mode M365 token has no `Mail.Send`. Gmail is different: no Gmail scope can create drafts without also being able to send (`gmail.modify` can send), so on Gmail only the CLI's policy gate blocks sending. An `imap` app password can do everything; there the client enforces the mode itself (no changes below `draft`, and no SMTP connection below `send`).
 - **Policy file**: `$EMAIL_POLICY_FILE`, else `~/.config/email/policy.toml` (see [docs/policy.example.toml](docs/policy.example.toml)). A missing file means `read`. An unparsable file, or one with unknown keys, stops every command with exit 4.
 - **Audit**: every write and every denial is appended to `~/.local/state/email/audit.jsonl`.
 - **Untrusted content**:
@@ -49,6 +54,7 @@ mkdir -p .tmp/cfg && cp docs/policy.example.toml .tmp/cfg/policy.toml   # withou
 - **Enabling it**:
   - Microsoft 365: add `Mail.Send` to the Entra app (with admin consent), log in again with `--mode send`, and set the policy mode to `send`.
   - Gmail: the draft-mode token can already send, so the policy mode is the only switch.
+  - imap: log in again with `--mode send` (same app password) and set the policy mode to `send`. SMTP (`smtp.gmail.com:465` for Gmail) is used only then.
 
 ## Exit codes
 
@@ -67,7 +73,7 @@ Errors are printed to stderr as `{"error":{"exit_code":4,"code":"policy_denied",
 
 | path | contents |
 | --- | --- |
-| `~/.config/email/` (`$EMAIL_CONFIG_DIR`) | `config.toml` (`default_account`), `policy.toml`, `accounts/<alias>/` (0700, tokens 0600) |
+| `~/.config/email/` (`$EMAIL_CONFIG_DIR`) | `config.toml` (`default_account`), `policy.toml`, `accounts/<alias>/` (0700; tokens and `imap-credentials.json` 0600) |
 | `~/.local/state/email/` (`$EMAIL_STATE_DIR`) | `audit.jsonl`, `sync/<alias>-<label>.cursor` |
 
 Account selection order: `-a`, then `$EMAIL_ACCOUNT`, then `default_account`, then the only configured account.
