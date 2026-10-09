@@ -1,0 +1,27 @@
+{
+  "id": "18f0a1b2c3d4e5f3",
+  "threadId": "18f0a1b2c3d4e5f3",
+  "labelIds": [
+    "INBOX"
+  ],
+  "snippet": "third",
+  "internalDate": "1759980000000",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "From",
+        "value": "carol@contoso.example"
+      },
+      {
+        "name": "Subject",
+        "value": "Third"
+      }
+    ],
+    "body": {
+      "size": 0
+    }
+  }
+}

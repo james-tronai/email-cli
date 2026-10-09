@@ -1,0 +1,55 @@
+{
+  "history": [
+    {
+      "id": "500101",
+      "messages": [
+        {
+          "id": "18f0e0e0e0e0e002",
+          "threadId": "18f0e0e0e0e0e002"
+        }
+      ],
+      "messagesAdded": [
+        {
+          "message": {
+            "id": "18f0e0e0e0e0e002",
+            "threadId": "18f0e0e0e0e0e002",
+            "labelIds": [
+              "UNREAD",
+              "INBOX"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "500102",
+      "messagesAdded": [
+        {
+          "message": {
+            "id": "18f0e0e0e0e0e003",
+            "threadId": "18f0e0e0e0e0e003",
+            "labelIds": [
+              "DRAFT"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "500103",
+      "messagesAdded": [
+        {
+          "message": {
+            "id": "18f0e0e0e0e0e002",
+            "threadId": "18f0e0e0e0e0e002",
+            "labelIds": [
+              "UNREAD",
+              "INBOX"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "historyId": "500110"
+}

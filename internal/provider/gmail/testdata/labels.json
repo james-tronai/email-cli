@@ -1,0 +1,39 @@
+{
+  "labels": [
+    {
+      "id": "INBOX",
+      "name": "INBOX",
+      "type": "system"
+    },
+    {
+      "id": "SENT",
+      "name": "SENT",
+      "type": "system"
+    },
+    {
+      "id": "DRAFT",
+      "name": "DRAFT",
+      "type": "system"
+    },
+    {
+      "id": "UNREAD",
+      "name": "UNREAD",
+      "type": "system"
+    },
+    {
+      "id": "STARRED",
+      "name": "STARRED",
+      "type": "system"
+    },
+    {
+      "id": "Label_7",
+      "name": "Finance",
+      "type": "user"
+    },
+    {
+      "id": "Label_9",
+      "name": "Clients/Acme",
+      "type": "user"
+    }
+  ]
+}

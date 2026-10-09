@@ -1,0 +1,39 @@
+{
+  "id": "18f0a1b2c3d4e5f4",
+  "threadId": "18f0a1b2c3d4e5f4",
+  "labelIds": [
+    "SENT"
+  ],
+  "internalDate": "1759970000000",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "From",
+        "value": "James <james@tronai.example>"
+      },
+      {
+        "name": "To",
+        "value": "dave@contoso.example"
+      },
+      {
+        "name": "Subject",
+        "value": "=?ISO-8859-1?Q?Caf=E9?="
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"ISO-8859-1\""
+      },
+      {
+        "name": "Message-ID",
+        "value": "<sent-1@tronai.example>"
+      }
+    ],
+    "body": {
+      "size": 16,
+      "data": "Q2Fm6SBjcuhtZSDgIDEwaA"
+    }
+  }
+}

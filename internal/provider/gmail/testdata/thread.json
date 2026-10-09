@@ -1,0 +1,60 @@
+{
+  "id": "18f0a1b2c3d4e5f0",
+  "historyId": "500060",
+  "messages": [
+    {
+      "id": "18f0a1b2c3d4e5f1",
+      "threadId": "18f0a1b2c3d4e5f0",
+      "labelIds": [
+        "INBOX"
+      ],
+      "internalDate": "1760000000000",
+      "payload": {
+        "partId": "",
+        "mimeType": "text/plain",
+        "filename": "",
+        "headers": [
+          {
+            "name": "From",
+            "value": "alice@contoso.example"
+          },
+          {
+            "name": "Subject",
+            "value": "Re: Q3"
+          }
+        ],
+        "body": {
+          "size": 5,
+          "data": "bGF0ZXI"
+        }
+      }
+    },
+    {
+      "id": "18f0a1b2c3d4e5e0",
+      "threadId": "18f0a1b2c3d4e5f0",
+      "labelIds": [
+        "SENT"
+      ],
+      "internalDate": "1759000000000",
+      "payload": {
+        "partId": "",
+        "mimeType": "text/plain",
+        "filename": "",
+        "headers": [
+          {
+            "name": "From",
+            "value": "james@tronai.example"
+          },
+          {
+            "name": "Subject",
+            "value": "Q3"
+          }
+        ],
+        "body": {
+          "size": 7,
+          "data": "ZWFybGllcg"
+        }
+      }
+    }
+  ]
+}

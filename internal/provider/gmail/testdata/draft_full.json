@@ -1,0 +1,78 @@
+{
+  "id": "r-5551234567890123456",
+  "message": {
+    "id": "18f0d0d0d0d0d001",
+    "threadId": "18f0a1b2c3d4e5f0",
+    "labelIds": [
+      "DRAFT"
+    ],
+    "snippet": "Thanks Alice, will do.",
+    "internalDate": "1760001000000",
+    "payload": {
+      "partId": "",
+      "mimeType": "multipart/mixed",
+      "filename": "",
+      "headers": [
+        {
+          "name": "From",
+          "value": "james@tronai.example"
+        },
+        {
+          "name": "To",
+          "value": "alice.replies@contoso.example"
+        },
+        {
+          "name": "Bcc",
+          "value": "audit@tronai.example"
+        },
+        {
+          "name": "Subject",
+          "value": "Re: Q3 numbers"
+        },
+        {
+          "name": "In-Reply-To",
+          "value": "<CAF=abc123@mail.contoso.example>"
+        },
+        {
+          "name": "References",
+          "value": "<CAF=root000@mail.contoso.example> <CAF=abc123@mail.contoso.example>"
+        }
+      ],
+      "body": {
+        "size": 0
+      },
+      "parts": [
+        {
+          "partId": "0",
+          "mimeType": "text/plain",
+          "filename": "",
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "text/plain; charset=UTF-8"
+            }
+          ],
+          "body": {
+            "size": 152,
+            "data": "VGhhbmtzIEFsaWNlLCB3aWxsIGRvLgoKLS0gClNlbnQgYnkgYW4gYXV0b21hdGVkIGFzc2lzdGFudAoKT24gVGh1LCA5IE9jdCAyMDI1IDA4OjUzOjIwICswMDAwLCBBbGljZSBFeGFtcGxlIDxhbGljZUBjb250b3NvLmV4YW1wbGU-IHdyb3RlOgo-IEhpIEphbWVzLAo"
+          }
+        },
+        {
+          "partId": "1",
+          "mimeType": "text/csv",
+          "filename": "numbers.csv",
+          "headers": [
+            {
+              "name": "Content-Disposition",
+              "value": "attachment; filename=\"numbers.csv\""
+            }
+          ],
+          "body": {
+            "attachmentId": "ANGjdJ-draft-att",
+            "size": 6
+          }
+        }
+      ]
+    }
+  }
+}

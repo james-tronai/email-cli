@@ -1,0 +1,28 @@
+{
+  "id": "18f0e0e0e0e0e002",
+  "threadId": "18f0e0e0e0e0e002",
+  "labelIds": [
+    "UNREAD",
+    "INBOX"
+  ],
+  "snippet": "new mail",
+  "internalDate": "1760002000000",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "From",
+        "value": "erin@contoso.example"
+      },
+      {
+        "name": "Subject",
+        "value": "New one"
+      }
+    ],
+    "body": {
+      "size": 0
+    }
+  }
+}
