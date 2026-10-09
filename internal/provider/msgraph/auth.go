@@ -177,8 +177,10 @@ func newMSAL(store *auth.Store, acct *auth.Account, h *http.Client) (public.Clie
 // silentTokens acquires tokens from the cache/refresh token only, and
 // enforces the account lock on every call.
 type silentTokens struct {
-	msal  msalClient
-	acct  *auth.Account
+	msal msalClient
+	acct *auth.Account
+	// lock serializes refreshes with other email processes (nil: none).
+	lock  func(context.Context) (func(), error)
 	token string
 	exp   time.Time
 }
@@ -189,12 +191,37 @@ func NewTokenSource(store *auth.Store, acct *auth.Account, h *http.Client) (Toke
 	if err != nil {
 		return nil, err
 	}
-	return &silentTokens{msal: c, acct: acct}, nil
+	lock := func(ctx context.Context) (func(), error) { return store.Lock(ctx, acct.Alias) }
+	return &silentTokens{msal: c, acct: acct, lock: lock}, nil
 }
 
 func (s *silentTokens) Token(ctx context.Context) (string, error) {
 	if s.token != "" && time.Until(s.exp) > time.Minute {
 		return s.token, nil
+	}
+	tok, err := s.acquire(ctx)
+	// The watch sidecar and the agent's commands share the token cache. A
+	// refresh token another process just rotated reads as invalid_grant:
+	// read the cache again once before asking for a new login.
+	if err != nil && strings.Contains(err.Error(), "invalid_grant") && ctx.Err() == nil {
+		tok, err = s.acquire(ctx)
+	}
+	return tok, err
+}
+
+// acquire reads the cache (MSAL does on every call) and refreshes if
+// needed, holding the account's file lock so that two processes never
+// refresh at once.
+func (s *silentTokens) acquire(ctx context.Context) (string, error) {
+	if s.lock != nil {
+		unlock, err := s.lock(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return "", errs.Timeout(ctx.Err())
+			}
+			return "", fmt.Errorf("locking the token cache: %w", err)
+		}
+		defer unlock()
 	}
 	relogin := fmt.Sprintf("run `email auth login -a %s --provider msgraph --mode %s`", s.acct.Alias, s.acct.Mode)
 	accts, err := s.msal.Accounts(ctx)

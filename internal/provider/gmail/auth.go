@@ -169,6 +169,25 @@ func NewTokenSource(p TokenSourceParams) (TokenSource, error) {
 func (f *fileTokens) Token(ctx context.Context) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if !f.st.Token.Valid() {
+		// About to refresh: take the account's file lock (the watch
+		// sidecar and the agent's commands share this token) and pick up
+		// a token another process may have refreshed meanwhile.
+		unlock, err := f.store.Lock(ctx, f.acct.Alias)
+		if err != nil {
+			if ctx.Err() != nil {
+				return "", errs.Timeout(ctx.Err())
+			}
+			return "", fmt.Errorf("locking the token file: %w", err)
+		}
+		defer unlock()
+		if b, err := f.store.ReadSecret(f.acct.Alias, tokenFile); err == nil && b != nil {
+			var st storedToken
+			if json.Unmarshal(b, &st) == nil && st.Token != nil && st.Token.AccessToken != f.st.Token.AccessToken {
+				f.st, f.src = &st, nil
+			}
+		}
+	}
 	if f.src == nil {
 		hctx := ctx
 		if f.http != nil {

@@ -30,6 +30,7 @@ func mustMode(s string) policy.Mode {
 type fakeMSAL struct {
 	accounts []public.Account
 	err      error
+	errs     []error // returned by the first calls, before err
 	calls    int
 	scopes   []string
 }
@@ -39,6 +40,11 @@ func (f *fakeMSAL) Accounts(context.Context) ([]public.Account, error) { return 
 func (f *fakeMSAL) AcquireTokenSilent(_ context.Context, scopes []string, _ ...public.AcquireSilentOption) (public.AuthResult, error) {
 	f.calls++
 	f.scopes = scopes
+	if len(f.errs) > 0 {
+		e := f.errs[0]
+		f.errs = f.errs[1:]
+		return public.AuthResult{}, e
+	}
 	if f.err != nil {
 		return public.AuthResult{}, f.err
 	}
@@ -76,6 +82,46 @@ func TestSilentTokenAccountLock(t *testing.T) {
 	if _, err := (&silentTokens{msal: m, acct: lockedAccount()}).Token(ctx); errs.ExitCode(err) != errs.ExitAuth {
 		t.Fatalf("wrong home id: %v", err)
 	}
+}
+
+// Another process (the watch sidecar, or the agent's command) rotated the
+// refresh token: the first refresh says invalid_grant, the cache is read
+// again and the second succeeds. Each attempt holds the account lock.
+func TestSilentTokenRereadsCacheAfterInvalidGrant(t *testing.T) {
+	m := &fakeMSAL{accounts: []public.Account{{HomeAccountID: "uid.utid", PreferredUsername: "james@tronai.example"}},
+		errs: []error{errors.New("invalid_grant: AADSTS70000: refresh token was already used")}}
+	locks, held := 0, false
+	lock := func(context.Context) (func(), error) {
+		if held {
+			t.Fatal("lock taken twice")
+		}
+		locks++
+		held = true
+		return func() { held = false }, nil
+	}
+	tok, err := (&silentTokens{msal: m, acct: lockedAccount(), lock: lock}).Token(ctx)
+	if err != nil || tok != "at" || m.calls != 2 || locks != 2 || held {
+		t.Fatalf("tok %q err %v calls %d locks %d held %v", tok, err, m.calls, locks, held)
+	}
+}
+
+func TestStoreLockIsExclusiveAcrossHolders(t *testing.T) {
+	store := &auth.Store{Dir: t.TempDir()}
+	unlock, err := store.Lock(ctx, "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	short, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	if _, err := store.Lock(short, "work"); err == nil {
+		t.Fatal("second holder got the lock")
+	}
+	unlock()
+	unlock2, err := store.Lock(ctx, "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock2()
 }
 
 func TestSilentTokenRefreshFailureIsExit3(t *testing.T) {
