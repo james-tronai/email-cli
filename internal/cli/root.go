@@ -21,6 +21,7 @@ import (
 	"github.com/james-tronai/email-cli/internal/policy"
 	"github.com/james-tronai/email-cli/internal/provider"
 	"github.com/james-tronai/email-cli/internal/provider/fake"
+	"github.com/james-tronai/email-cli/internal/provider/gmail"
 	"github.com/james-tronai/email-cli/internal/provider/msgraph"
 	"github.com/james-tronai/email-cli/internal/render"
 	"github.com/james-tronai/email-cli/internal/service"
@@ -224,8 +225,12 @@ func (a *app) openProvider(_ context.Context, acct *auth.Account) (provider.Prov
 			UserAgent:       a.userAgent(),
 			FolderCachePath: filepath.Join(a.store.AccountDir(acct.Alias), "msgraph-folders.json"),
 		})
-	case "gmail":
-		return nil, errs.Unsupported("provider %s is not implemented yet", acct.Provider)
+	case gmail.Name:
+		ts, err := gmail.NewTokenSource(gmail.TokenSourceParams{Store: a.store, Account: acct})
+		if err != nil {
+			return nil, err
+		}
+		return gmail.New(gmail.Config{Alias: acct.Alias, Username: acct.Username, Tokens: ts, UserAgent: a.userAgent()})
 	}
 	return nil, errs.Usage("unknown provider %q", acct.Provider)
 }

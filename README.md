@@ -2,7 +2,12 @@
 
 A multi-account mail CLI for self-hosted agents. The agent gets least-privilege, audited access and works in draft-only mode by default. Output is JSON, and the CLI never prompts.
 
-Status: **M2**. Microsoft 365 (Graph) read + draft works: browser login (auth code + PKCE, `--manual` for headless), list, search, get, thread, attachments, drafts (create/reply/forward/update/delete), move, categories, mark and delta sync. Setup steps are in [docs/microsoft-365-setup.md](docs/microsoft-365-setup.md). Gmail is M3; send is M4.
+Status: **M3**. Both providers do read + draft:
+
+- **Microsoft 365** (Graph): browser login (auth code + PKCE, `--manual` for headless), list, search, get, thread, attachments, drafts (create/reply/forward/update/delete), move, categories, mark and delta sync. Setup: [docs/microsoft-365-setup.md](docs/microsoft-365-setup.md).
+- **Google Workspace** (Gmail API): the same commands, with the same login flow. Labels map onto the reserved names, `search` takes Gmail query syntax, and sync uses `history.list`. Setup: [docs/google-workspace-setup.md](docs/google-workspace-setup.md).
+
+Send is M4.
 
 ## Quick try (fake mailbox)
 

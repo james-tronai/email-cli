@@ -185,3 +185,23 @@ func TestWriteResultsCarryTopLevelWebLink(t *testing.T) {
 		t.Errorf("has_more (all fit): %q", out)
 	}
 }
+
+func TestGmailLoginFlagChecks(t *testing.T) {
+	e := newEnv(t, draftPolicy)
+	for _, args := range [][]string{
+		{"auth", "login", "-a", "gw", "--provider", "gmail", "--tenant", "x", "--client-id", "i", "--client-secret", "s"},
+		{"auth", "login", "-a", "gw", "--provider", "gmail", "--flow", "device"},
+		{"auth", "login", "-a", "gw", "--provider", "gmail", "--client-id", "i"},
+		{"auth", "login", "-a", "gw", "--provider", "gmail", "--client-file", "/nonexistent.json"},
+		{"auth", "login", "-a", "gw", "--provider", "gmail"}, // no client given or stored
+	} {
+		e.code(2, args...)
+	}
+	// A gmail alias that was never logged in has no token: exit 3, not a crash.
+	if err := os.MkdirAll(filepath.Join(e.cfg, "accounts", "gw"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(e.cfg, "accounts", "gw", "account.json"),
+		[]byte(`{"alias":"gw","provider":"gmail","mode":"draft","username":"james@tronai.com.au"}`), 0o600)
+	e.code(3, "list", "-a", "gw")
+}

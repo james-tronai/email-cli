@@ -15,6 +15,7 @@ import (
 	"github.com/james-tronai/email-cli/internal/policy"
 	"github.com/james-tronai/email-cli/internal/provider"
 	"github.com/james-tronai/email-cli/internal/provider/fake"
+	"github.com/james-tronai/email-cli/internal/provider/gmail"
 	"github.com/james-tronai/email-cli/internal/provider/msgraph"
 )
 
@@ -101,8 +102,64 @@ func (a *app) loginMSGraph(ctx context.Context, acct *auth.Account, flow string,
 	return res.Warnings, nil
 }
 
+// loginGmail runs the browser flow for a Google Workspace mailbox. The OAuth
+// client comes from --client-file, --client-id/--client-secret, or the one
+// stored at the previous login.
+func (a *app) loginGmail(ctx context.Context, acct *auth.Account, clientSecret, clientFile string, manual, noBrowser bool) ([]string, error) {
+	if prev, err := a.store.LoadAccount(acct.Alias); err == nil {
+		if prev.Provider != acct.Provider {
+			return nil, errs.Usage("account %s uses provider %s; log it out first", acct.Alias, prev.Provider)
+		}
+		acct.Username, acct.CreatedAt = prev.Username, prev.CreatedAt
+	}
+	var client *gmail.Client
+	switch {
+	case clientFile != "":
+		if acct.ClientID != "" || clientSecret != "" {
+			return nil, errs.Usage("use either --client-file or --client-id/--client-secret")
+		}
+		c, err := gmail.LoadClientFile(clientFile)
+		if err != nil {
+			return nil, err
+		}
+		client = c
+	case acct.ClientID != "" || clientSecret != "":
+		if acct.ClientID == "" || clientSecret == "" {
+			return nil, errs.Usage("--client-id and --client-secret go together")
+		}
+		client = &gmail.Client{ID: acct.ClientID, Secret: clientSecret}
+	default:
+		c, err := gmail.LoadClient(a.store, acct.Alias)
+		if err != nil {
+			return nil, err
+		}
+		client = c
+	}
+	params := gmail.LoginParams{
+		Store:     a.store,
+		Account:   acct,
+		Client:    client,
+		UserAgent: a.userAgent(),
+		Manual:    manual,
+		Stdin:     a.stdin,
+		OnPrompt:  func(p oauthflow.Prompt) error { return a.output(p) },
+	}
+	if !noBrowser {
+		params.OpenBrowser = oauthflow.OpenBrowser
+	}
+	res, err := gmail.Login(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	acct.Username, acct.Scopes = res.Username, gmail.Scopes(acct.Mode)
+	if client != nil {
+		acct.ClientID = client.ID
+	}
+	return res.Warnings, nil
+}
+
 func (a *app) authLoginCmd() *cobra.Command {
-	var prov, mode, tenant, clientID, username, flow string
+	var prov, mode, tenant, clientID, clientSecret, clientFile, username, flow string
 	var manual, noBrowser bool
 	c := &cobra.Command{
 		Use:   "login",
@@ -119,7 +176,11 @@ Login uses OAuth authorization code + PKCE. By default it listens on
 http://localhost:<random port>/callback and opens a browser. On a headless
 machine use --manual: open the printed authorize_url anywhere, sign in, then
 paste the URL the browser fails to load (…/callback?code=…) on stdin.
-msgraph also has --flow device (device code), which Entra Security Defaults block.`,
+msgraph also has --flow device (device code), which Entra Security Defaults block.
+
+gmail needs a GCP OAuth client of type Desktop app: --client-file, or
+--client-id with --client-secret. It is stored with the account, so a
+re-login needs neither. See docs/google-workspace-setup.md.`,
 		Args: exactArgs(0),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if a.account == "" {
@@ -153,9 +214,20 @@ msgraph also has --flow device (device code), which Entra Security Defaults bloc
 				}
 				res.Warnings = warnings
 				return a.output(res)
-			case "gmail":
-				_ = manual
-				return errs.Unsupported("provider %s is not implemented yet", prov)
+			case gmail.Name:
+				if cmd.Flags().Changed("flow") || tenant != "" {
+					return errs.Usage("--flow and --tenant apply to msgraph only")
+				}
+				warnings, err := a.loginGmail(cmd.Context(), acct, clientSecret, clientFile, manual, noBrowser)
+				if err != nil {
+					return err
+				}
+				res, err := a.finishLogin(acct)
+				if err != nil {
+					return err
+				}
+				res.Warnings = warnings
+				return a.output(res)
 			default:
 				return errs.Usage("unknown --provider %q (want msgraph, gmail or fake)", prov)
 			}
@@ -171,6 +243,8 @@ msgraph also has --flow device (device code), which Entra Security Defaults bloc
 	f.StringVar(&mode, "mode", "read", "read | draft | send")
 	f.StringVar(&tenant, "tenant", "", "Entra tenant id or domain (msgraph; default organizations)")
 	f.StringVar(&clientID, "client-id", "", "OAuth client id")
+	f.StringVar(&clientSecret, "client-secret", "", "gmail: OAuth Desktop client secret (stored 0600, not in account.json)")
+	f.StringVar(&clientFile, "client-file", "", "gmail: client_secret_*.json downloaded from the GCP console")
 	f.StringVar(&flow, "flow", "auth-code", "msgraph: auth-code (browser + PKCE) | device (blocked by Entra Security Defaults)")
 	f.BoolVar(&manual, "manual", false, "headless: print authorize_url, then paste the redirect URL from the browser on stdin")
 	f.BoolVar(&noBrowser, "no-browser", false, "do not try to open a browser (loopback flow)")
