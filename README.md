@@ -72,7 +72,9 @@ Errors are printed to stderr as `{"error":{"exit_code":4,"code":"policy_denied",
 
 Account selection order: `-a`, then `$EMAIL_ACCOUNT`, then `default_account`, then the only configured account.
 
-## Releases
+## Releases and installing
+
+`email` is a single static binary, published only as GitHub Release assets. There is **no Homebrew formula, package or container image**: download the binary for your platform, check it against `checksums.txt`, and put it on `PATH`.
 
 Each release is a GitHub Release on a `vX.Y.Z` tag of this (private) repo, with these assets:
 
@@ -81,10 +83,20 @@ Each release is a GitHub Release on a `vX.Y.Z` tag of this (private) repo, with 
 | `email_linux_amd64` | static binary (`CGO_ENABLED=0`) |
 | `email_linux_arm64` | static binary |
 | `email_darwin_arm64` | static binary |
+| `email_darwin_amd64` | static binary (from v0.4.0) |
 | `checksums.txt` | `sha256sum` format: `<hex>  <asset name>` |
 
 - Asset names have no version in them. The version lives in the tag only, and `email version` prints it.
 - Names and the checksum format are a contract with the k3s initContainer. Change them only together with that side.
+- Agent usage notes ship in [`skills/email/SKILL.md`](skills/email/SKILL.md). Deployments may carry their own adapted copy.
+
+### Cutting a release
+
+1. Write `.github/release-notes/vX.Y.Z.md`. Say what changed and, in particular, **what a deployment has to change**: policy keys, login flow, scopes, egress.
+2. Commit it, then push the tag: `git tag -a vX.Y.Z -m … && git push origin vX.Y.Z`.
+3. `.github/workflows/release.yml` runs the tests and [goreleaser](.goreleaser.yaml). Goreleaser builds the assets above, writes `checksums.txt` and publishes the release with the notes file, using the workflow's `GITHUB_TOKEN`.
+
+`task snapshot` builds the same assets locally into `dist/` without publishing.
 
 ### Downloading (initContainer, or any script)
 
