@@ -16,3 +16,9 @@ require_reply_context = true                    # send only replies/forwards, ne
 
 [delete]
 enabled = false             # blocks move/label to trash and DELETE via `email api`
+
+[watch]                     # filters for `email watch` notifications (not for sync or list)
+# Case-insensitive substrings of the sender address / subject; "@domain" works as a suffix.
+ignore_senders = ["noreply@", "no-reply@", "notifications@"]
+ignore_subjects = []
+only_unread = true          # skip mail already read (e.g. on the phone) by the time watch sees it

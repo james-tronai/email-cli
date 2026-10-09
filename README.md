@@ -2,7 +2,7 @@
 
 A multi-account mail CLI for self-hosted agents. The agent gets least-privilege, audited access and works in draft-only mode by default. Output is JSON, and the CLI never prompts.
 
-Status: **M6**. Three providers, all with read, draft, organise, sync and send:
+Status: **M7**. Three providers, all with read, draft, organise, sync and send:
 
 | provider | mailbox | login | setup |
 | --- | --- | --- | --- |
@@ -11,6 +11,8 @@ Status: **M6**. Three providers, all with read, draft, organise, sync and send:
 | `imap` | personal Gmail, or any IMAP/SMTP server | address + app password on stdin (`--password-stdin`) | [docs/gmail-personal-setup.md](docs/gmail-personal-setup.md) |
 
 All three support list, search, get, thread, attachments, drafts (create/reply/forward/update/delete), move, label, mark, sync and send. `msgraph` has categories for labels and Outlook search syntax (KQL). `gmail` and `imap` on Gmail use Gmail labels and Gmail search syntax. `imap` on another server falls back to folders and plain IMAP `SEARCH`.
+
+`email watch` (M7) is a long-running process that waits for new mail (IMAP IDLE, or a sync poll) and POSTs one JSON notification per batch to a webhook, so the agent is only woken when mail arrives. See [docs/watch.md](docs/watch.md).
 
 `email send` (M4) sends an existing draft. It only works when both the policy and the account login are in mode `send`. See [Sending](#sending).
 
@@ -74,7 +76,7 @@ Errors are printed to stderr as `{"error":{"exit_code":4,"code":"policy_denied",
 | path | contents |
 | --- | --- |
 | `~/.config/email/` (`$EMAIL_CONFIG_DIR`) | `config.toml` (`default_account`), `policy.toml`, `accounts/<alias>/` (0700; tokens and `imap-credentials.json` 0600) |
-| `~/.local/state/email/` (`$EMAIL_STATE_DIR`) | `audit.jsonl`, `sync/<alias>-<label>.cursor` |
+| `~/.local/state/email/` (`$EMAIL_STATE_DIR`) | `audit.jsonl`, `sync/<alias>-<label>.cursor`, `watch/<alias>.json` (watch's own cursor and notified ids) |
 
 Account selection order: `-a`, then `$EMAIL_ACCOUNT`, then `default_account`, then the only configured account.
 
