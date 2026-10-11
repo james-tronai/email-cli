@@ -25,6 +25,7 @@ Each `-a` account runs on its own. If no `-a` is given, every logged-in account 
 | `gmail` (API) | sleeps `--poll-interval` | Gmail history, as `email sync` does |
 
 - **IDLE problems**: if the server has no IDLE, watch polls instead. If IDLE fails 3 times in a row, watch polls for 30 minutes and then tries IDLE again.
+- **Servers that accept IDLE but never push**: `email doctor -a <alias> --idle-test 60s` finds them (send yourself a mail while it waits). Run watch with `--no-idle` for them; it then polls every `--poll-interval`.
 - **Connection errors**: watch reconnects with exponential backoff (5 s, doubling, at most 5 minutes) and logs `reconnected` when it is back.
 - **Login needed** (exit 3, for example `invalid_grant` or a revoked app password), or a policy that no longer allows reading: the account is marked `degraded`. Watch logs a warning and tries again every 5 minutes; the other accounts carry on. After `email auth login` the account recovers by itself, without a restart.
 

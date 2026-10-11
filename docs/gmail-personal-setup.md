@@ -68,8 +68,8 @@ The password is accepted only on stdin. There is no `--password` flag and no env
 ## 4. Check it
 
 ```sh
-email -a gmail auth status        # provider imap, servers, mode; no password
-email -a gmail capabilities       # commands the policy allows
+email doctor -a gmail             # login, servers, IDLE support, policy; no password, no mail content
+email doctor -a gmail --idle-test 60s   # optional: send yourself a mail while it waits
 email -a gmail list --limit 5
 ```
 
@@ -90,7 +90,7 @@ The server announces Gmail's IMAP extensions (`X-GM-EXT-1`), and the client uses
 
 Each command opens one IMAP connection and logs out when it finishes. Gmail allows 15 simultaneous IMAP connections per account, and the cron job runs every 30 minutes, so the client never keeps one open.
 
-The same provider works with other IMAP servers: pass `--imap-host`, and `--smtp-host` if you will send. Without `X-GM-EXT-1`:
+The same provider works with other IMAP servers: see [imap-presets.md](imap-presets.md) (`--preset icloud|fastmail|aliyun|qq|163|mailu`, or `--host`). Without `X-GM-EXT-1`:
 - ids are UIDs (`<uidvalidity>.<uid>.<mailbox>`);
 - threads are rebuilt from `References` / `In-Reply-To`;
 - folders replace labels (`email label` is unsupported; use `move`);

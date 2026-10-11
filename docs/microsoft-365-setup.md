@@ -6,6 +6,8 @@ Login uses OAuth 2.0 **authorization code + PKCE** with a `http://localhost:<por
 
 Setup has two parts: register an app in Entra once per tenant, then log in once per mailbox.
 
+**Every organisation registers its own app.** There is no shared multi-tenant `email-cli` app: the app lives in your tenant, you control its permissions and consent, and you can delete it to cut access off. You pass its tenant and client IDs to `email auth login`. The registration takes about ten minutes; the IDs are not secrets.
+
 ## 1. Register the app in Entra (once per tenant)
 
 You need an account that can register applications in the tenant (by default any member can; tenants that restrict this need an Application Developer or admin).
@@ -38,9 +40,9 @@ You need an account that can register applications in the tenant (by default any
 
 There is no client secret and no certificate. Keep **Certificates & secrets** empty.
 
-### The tronai.com.au registration
+### Example: the author's registration
 
-The app for hermes-james is already registered. Neither ID is secret:
+For reference, this is what a finished registration looks like (the tenant of this project's author; use your own IDs):
 
 | | |
 | --- | --- |
@@ -54,8 +56,8 @@ The app for hermes-james is already registered. Neither ID is secret:
 
 ```sh
 email auth login -a work --provider msgraph --mode draft \
-  --tenant 97acb66e-0e4a-4325-a2f0-76b5ea22b8d2 \
-  --client-id ad23d4f7-ab01-4825-93d6-ff2be487f96d
+  --tenant <Directory (tenant) ID> \
+  --client-id <Application (client) ID>
 ```
 
 - `-a work` is the local alias. Pass it later with `-a`, or rely on `default_account`. The first account becomes the default.
@@ -63,12 +65,12 @@ email auth login -a work --provider msgraph --mode draft \
 - `--tenant` defaults to `organizations` (any work or school account). `common` and `consumers` are refused: personal Microsoft accounts are not supported.
 - `--tenant` and `--client-id` are saved in `account.json`, so a later re-login only needs `-a work --provider msgraph --mode …`.
 
-The command listens on `http://localhost:<random port>/callback`, opens the browser (skip that with `--no-browser`) and prints:
+The command listens on `http://localhost:<random port>/callback` and opens the browser (skip that with `--no-browser`). It prints the sign-in link on stderr in case no browser opens. When stdout is not a terminal (a script, `kubectl exec -i`), it also prints the prompt as JSON on stdout:
 
 ```json
 {
   "mode": "loopback",
-  "authorize_url": "https://login.microsoftonline.com/97acb66e-…/oauth2/v2.0/authorize?client_id=…&code_challenge=…",
+  "authorize_url": "https://login.microsoftonline.com/<tenant>/oauth2/v2.0/authorize?client_id=…&code_challenge=…",
   "redirect_uri": "http://localhost:51234/callback",
   "instructions": "Sign in in the browser window that opened (or open authorize_url on this machine). Waiting for the redirect…"
 }
@@ -81,7 +83,7 @@ Sign in as the mailbox owner, MFA included. The browser lands on a "Signed in" p
   "account": "work",
   "provider": "msgraph",
   "mode": "draft",
-  "username": "james@tronai.com.au",
+  "username": "you@example.com",
   "scopes": ["User.Read", "Mail.Read", "offline_access", "Mail.ReadWrite"],
   "default": true
 }
@@ -92,8 +94,7 @@ Sign in as the mailbox owner, MFA included. The browser lands on a "Signed in" p
 Then check:
 
 ```sh
-email auth status -a work
-email capabilities -a work
+email doctor -a work          # login, policy, effective mode; prints no mail content
 email list -a work --limit 5 --format text
 ```
 
@@ -102,14 +103,16 @@ email list -a work --limit 5 --format text
 When the CLI runs where no browser can reach its loopback port (a Pod, an SSH session), add `--manual`. The browser can be anywhere: the owner's laptop or phone.
 
 ```sh
-kubectl -n hermes exec -i deploy/hermes-james -c hermes -- \
-  email auth login -a work --provider msgraph --mode draft --manual \
-    --tenant 97acb66e-0e4a-4325-a2f0-76b5ea22b8d2 \
-    --client-id ad23d4f7-ab01-4825-93d6-ff2be487f96d
+email auth login -a work --provider msgraph --mode draft --manual \
+  --tenant <tenant ID> --client-id <client ID>
+
+# in a Kubernetes Pod:
+kubectl -n <namespace> exec -i deploy/<agent> -c <container> -- \
+  email auth login -a work --provider msgraph --mode draft --manual --tenant <tenant ID> --client-id <client ID>
 ```
 
-1. The command prints a JSON prompt with `"mode": "manual"`, an `authorize_url` and a `redirect_uri` (`http://localhost:<port>/callback`), then waits for one line on stdin. `-i` is required so stdin reaches it.
-2. Send `authorize_url` to the mailbox owner (for example in a Discord DM). To print only the URL, add `--jq 'select(.authorize_url) | .authorize_url'`.
+1. The command prints, on stderr, the link to open and what to do with the page that fails to load afterwards. Then it waits for one line on stdin; with `kubectl exec`, `-i` is required so stdin reaches it. When stdout is not a terminal it also prints the prompt as JSON on stdout (`"mode": "manual"`, `authorize_url`, `redirect_uri`).
+2. Send the link to the mailbox owner over a private channel. Scripts can take it from the JSON: `--jq 'select(.authorize_url) | .authorize_url'`.
 3. The owner opens the URL in any browser and signs in.
 4. The browser is then redirected to `http://localhost:<port>/callback?code=…&state=…`. **Nothing listens there, so the page fails to load. That is expected.**
 5. The owner copies the **entire URL from the address bar**. It contains the one-time code, valid for a few minutes.
@@ -117,11 +120,11 @@ kubectl -n hermes exec -i deploy/hermes-james -c hermes -- \
 
 The CLI checks `state` (so a URL from another login attempt is rejected), exchanges the code with the PKCE verifier and prints the result JSON above. The code can be used once, and only together with the verifier held by this process. Even so, send the pasted URL only over a private channel.
 
-Tokens land in `$EMAIL_CONFIG_DIR/accounts/work/msal.json` (mode 0600; the directory is 0700). In the Pod that is the PVC (`/opt/data/.config/email/`), so they survive restarts.
+Tokens land in `$EMAIL_CONFIG_DIR/accounts/work/msal.json` (mode 0600; the directory is 0700). In a Pod, put that directory on a persistent volume so they survive restarts. Then run `email doctor -a work`.
 
 ### Device code (`--flow device`)
 
-`--flow device` prints `verification_uri` and `user_code` instead. It only works in tenants that do not block device code sign-in. tronai.com.au uses Security Defaults, which block it (`AADSTS530035`).
+`--flow device` prints `verification_uri` and `user_code` instead. It only works in tenants that do not block device code sign-in; tenants with Security Defaults block it (`AADSTS530035`).
 
 ## Staying logged in
 
@@ -134,9 +137,9 @@ Tokens land in `$EMAIL_CONFIG_DIR/accounts/work/msal.json` (mode 0600; the direc
 
   Run the login command again; the alias, tenant and client ID are reused.
 
-## Enabling send
+## Enabling send (`Mail.Send`)
 
-`email send` needs a token that carries `Mail.Send`. Turning it on is a deliberate, three-part change:
+Leave this out until you want the agent to send. `email send` needs a token that carries `Mail.Send`. Turning it on is a deliberate, three-part change:
 
 1. Entra: on the app → **API permissions** → **Add a permission** → Microsoft Graph → Delegated → `Mail.Send`, then **Grant admin consent**.
 2. Log in again with `--mode send`. A draft-mode login never asks for `Mail.Send`.

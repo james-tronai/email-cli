@@ -8,9 +8,11 @@ Status: **M7**. Three providers, all with read, draft, organise, sync and send:
 | --- | --- | --- | --- |
 | `msgraph` | Microsoft 365 (Graph) | browser, OAuth auth code + PKCE (`--manual` for headless) | [docs/microsoft-365-setup.md](docs/microsoft-365-setup.md) |
 | `gmail` | Google Workspace (Gmail API) | the same flow, with a GCP Desktop OAuth client | [docs/google-workspace-setup.md](docs/google-workspace-setup.md) |
-| `imap` | personal Gmail, or any IMAP/SMTP server | address + app password on stdin (`--password-stdin`) | [docs/gmail-personal-setup.md](docs/gmail-personal-setup.md) |
+| `imap` | personal Gmail, iCloud, Fastmail, QQ, 163, Alibaba Mail, Mailu, or any IMAP/SMTP server | address + app password on stdin (`--password-stdin`), `--preset` for the servers | [docs/gmail-personal-setup.md](docs/gmail-personal-setup.md), [docs/imap-presets.md](docs/imap-presets.md) |
 
 All three support list, search, get, thread, attachments, drafts (create/reply/forward/update/delete), move, label, mark, sync and send. `msgraph` has categories for labels and Outlook search syntax (KQL). `gmail` and `imap` on Gmail use Gmail labels and Gmail search syntax. `imap` on another server falls back to folders and plain IMAP `SEARCH`.
+
+After every setup step, `email doctor` checks the install, the policy, each account's login and the watch setup, and says how to fix what fails. It prints no mail content. Policy templates to start from are in [docs/policy/](docs/policy/): `read`, `draft` (recommended), `send-reply-only` and `send-open`.
 
 `email watch` (M7) is a long-running process that waits for new mail (IMAP IDLE, or a sync poll) and POSTs one JSON notification per batch to a webhook, so the agent is only woken when mail arrives. See [docs/watch.md](docs/watch.md).
 
