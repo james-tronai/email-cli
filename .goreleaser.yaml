@@ -1,10 +1,11 @@
 # goreleaser v2. Run by .github/workflows/release.yml on a v* tag.
 #
-# The asset names are a contract with the k3s initContainer, which downloads
-# by tag + name and checks checksums.txt:
+# The asset names are a contract with install.sh and the k3s initContainer,
+# which download by tag + name and check checksums.txt:
 #   email_<os>_<arch>   bare static binaries, no archives, no version in the name
 #   checksums.txt       sha256, "<hex>  <name>" (sha256sum format)
-# Change them only together with the deployment side.
+# Change them only together with the deployment side. New assets may be
+# added next to them (install.sh, SBOMs, the signature bundle).
 version: 2
 
 project_name: email
@@ -36,6 +37,74 @@ archives:
 checksum:
   name_template: checksums.txt
   algorithm: sha256
+  extra_files:
+    - glob: ./install.sh
+
+# One SPDX SBOM per binary (needs syft): email_<os>_<arch>.sbom.json.
+sboms:
+  - artifacts: binary
+    documents:
+      - "{{ .ArtifactName }}.sbom.json"
+
+# Keyless cosign signature of checksums.txt (which covers every asset), as
+# a Sigstore bundle: checksums.txt.sigstore.json. Verify with
+#   cosign verify-blob --bundle checksums.txt.sigstore.json \
+#     --certificate-identity-regexp '^https://github.com/james-tronai/email-cli/\.github/workflows/release\.yml@refs/tags/v' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args: ["sign-blob", "--bundle=${signature}", "--yes", "${artifact}"]
+
+# ghcr.io/james-tronai/email-cli:<tag> and :latest, linux/amd64 + arm64.
+dockers_v2:
+  - id: email
+    ids: [email]
+    images:
+      - ghcr.io/james-tronai/email-cli
+    tags:
+      - "{{ .Tag }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    extra_files:
+      - LICENSE
+    labels:
+      org.opencontainers.image.title: email
+      org.opencontainers.image.description: Multi-account mail CLI for agents (Microsoft 365, Gmail, IMAP)
+      org.opencontainers.image.source: https://github.com/james-tronai/email-cli
+      org.opencontainers.image.version: "{{ .Tag }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.licenses: Apache-2.0
+
+docker_signs:
+  - cmd: cosign
+    args: ["sign", "--yes", "${artifact}@${digest}"]
+
+# brew install james-tronai/tap/email. Pushing to the tap needs a token
+# with write access to james-tronai/homebrew-tap (secret
+# HOMEBREW_TAP_GITHUB_TOKEN); without it the cask is only written to dist/.
+homebrew_casks:
+  - name: email
+    ids: [bare]
+    binaries: [email]
+    homepage: https://github.com/james-tronai/email-cli
+    description: Multi-account mail CLI for agents (Microsoft 365, Gmail, IMAP)
+    license: Apache-2.0
+    repository:
+      owner: james-tronai
+      name: homebrew-tap
+      token: '{{ envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}'
+    # An unset secret reaches the workflow as an empty variable.
+    skip_upload: '{{ if index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}auto{{ else }}true{{ end }}'
+    commit_msg_template: "email {{ .Tag }}"
+    hooks:
+      post:
+        # The binaries are not notarised; drop the quarantine flag.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}"]
+          end
 
 # No changelog section: the workflow always passes --release-notes (the
 # hand-written .github/release-notes/<tag>.md, or a fallback). Note that
@@ -48,3 +117,6 @@ release:
   draft: false
   prerelease: auto
   mode: replace
+  # `curl …/releases/latest/download/install.sh | sh` installs the latest.
+  extra_files:
+    - glob: ./install.sh

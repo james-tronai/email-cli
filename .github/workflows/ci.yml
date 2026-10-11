@@ -28,3 +28,27 @@ jobs:
           distribution: goreleaser
           version: "~> v2"
           args: check
+
+  # install.sh in clean containers, against the latest published release.
+  # The repository is private for now, so the token path (curl) is tested;
+  # once it is public, drop GITHUB_TOKEN to test the anonymous path.
+  install:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:24.04", "alpine:3.20"]
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: tools
+        run: |
+          if command -v apk >/dev/null; then apk add --no-cache curl ca-certificates
+          else apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null; fi
+      - name: install.sh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          sh install.sh --dest /tmp/bin
+          /tmp/bin/email version
+          sh install.sh --dest /tmp/bin 2>&1 | grep -q "already installed"
