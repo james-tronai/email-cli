@@ -137,3 +137,7 @@ task build
 ```
 
 The design doc is `docs/email-cli-design.md` in the k3s-infra repo (branch `james-tronai/link-email-hermes-james`).
+
+## License
+
+Apache License 2.0; see [LICENSE](LICENSE). Copyright 2026 James Tan.
