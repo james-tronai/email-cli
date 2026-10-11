@@ -94,6 +94,11 @@ elif command -v wget >/dev/null 2>&1; then
 else
 	die "curl or wget is required"
 fi
+# Retry resets and other transient failures too, where curl can (7.71+).
+retry_all=""
+if [ "$dl" = curl ] && curl --help all 2>/dev/null | grep -q -- --retry-all-errors; then
+	retry_all="--retry-all-errors"
+fi
 if [ -n "$token" ] && [ "$dl" != curl ]; then
 	die "downloading with a token needs curl (it keeps the token off the command line)"
 fi
@@ -109,9 +114,9 @@ fetch() {
 			[ -n "$token" ] && printf 'header = "Authorization: Bearer %s"\n' "$token"
 			[ -n "${3:-}" ] && printf 'header = "Accept: %s"\n' "$3"
 			printf 'header = "User-Agent: email-cli-install"\n'
-		} | curl -fsSL --proto '=https,http' --retry 3 -K - -o "$2" "$1"
+		} | curl -fsSL --proto '=https,http' --retry 3 $retry_all -K - -o "$2" "$1"
 	else
-		wget -q -U email-cli-install -O "$2" "$1"
+		wget -q -T 30 -U email-cli-install -O "$2" "$1" || { sleep 2 && wget -q -T 30 -U email-cli-install -O "$2" "$1"; }
 	fi
 }
 
