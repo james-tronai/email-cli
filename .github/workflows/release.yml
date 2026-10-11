@@ -55,6 +55,10 @@ jobs:
         run: |
           img="ghcr.io/${GITHUB_REPOSITORY}:${GITHUB_REF_NAME}"
           docker run --rm "$img" version
+          # TLS from FROM scratch (embedded fallback roots): a certificate
+          # error would show in check_error.
+          docker run --rm "$img" version --check | tee "$RUNNER_TEMP/check.json"
+          ! grep -qiE "x509|certificate" "$RUNNER_TEMP/check.json"
           # The initContainer path: copy the binary out of the scratch image.
           mkdir -p "$RUNNER_TEMP/out"
           docker run --rm --user "$(id -u)" -v "$RUNNER_TEMP/out:/out" "$img" self-install --dest /out
