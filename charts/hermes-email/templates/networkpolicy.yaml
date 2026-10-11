@@ -1,0 +1,59 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $fullname := include "hermes-email.fullname" . -}}
+# watch: no ingress at all; egress to DNS, the Hermes webhook and the mail providers.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-watch
+  labels: {{- include "hermes-email.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "hermes-email.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: {{ .Values.networkPolicy.dns.namespace }}}
+          podSelector:
+            matchLabels: {{- toYaml .Values.networkPolicy.dns.podSelector | nindent 14 }}
+      ports:
+        - {port: 53, protocol: UDP}
+        - {port: 53, protocol: TCP}
+    {{- if .Values.hermes.podSelector }}
+    - to:
+        - podSelector:
+            matchLabels: {{- toYaml .Values.hermes.podSelector | nindent 14 }}
+      ports:
+        - {port: {{ .Values.hermes.webhookPort }}, protocol: TCP}
+    {{- end }}
+    {{- if .Values.networkPolicy.allowInternet }}
+    # Public internet only: pod/service networks, RFC 1918, link-local and CGNAT are cut out.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+    {{- end }}
+    {{- with .Values.networkPolicy.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- if and .Values.networkPolicy.hermesIngress .Values.hermes.podSelector }}
+---
+# Adds to the Hermes pod's own policies: watch may reach the webhook port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-hermes-webhook
+  labels: {{- include "hermes-email.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- toYaml .Values.hermes.podSelector | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {{- include "hermes-email.selectorLabels" . | nindent 14 }}
+      ports:
+        - {port: {{ .Values.hermes.webhookPort }}, protocol: TCP}
+{{- end }}
+{{- end }}

@@ -1,0 +1,13 @@
+apiVersion: v2
+name: hermes-email
+description: email watch for a Hermes agent (new mail wakes the agent), plus the email skill, route script, policy and triage cron job on the agent's volume
+type: application
+# version and appVersion follow the email-cli release; the release workflow checks that they match the tag.
+version: 0.9.0
+appVersion: v0.9.0
+home: https://github.com/james-tronai/email-cli
+sources:
+  - https://github.com/james-tronai/email-cli/tree/main/charts/hermes-email
+keywords: [email, hermes, agent, imap, microsoft-365, gmail]
+annotations:
+  licenses: Apache-2.0

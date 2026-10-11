@@ -1,0 +1,137 @@
+# hermes-email: runs `email watch` next to an existing Hermes agent and prepares the agent's volume.
+# The Hermes Deployment stays yours; see README.md for the three things it needs (policy mount,
+# webhook route, skills settings). docs/hermes.md in the email-cli repository has the whole picture.
+
+image:
+  repository: ghcr.io/james-tronai/email-cli
+  tag: ""                 # default: the chart's appVersion
+  digest: ""              # sha256:…; wins over tag
+  pullPolicy: IfNotPresent
+
+hermes:
+  # Required. The PersistentVolumeClaim that Hermes keeps HERMES_HOME on. Watch mounts it too:
+  # mail account tokens live there, and the init containers write the skill and binary there.
+  pvc: ""
+  # Where that volume is mounted in the Hermes container (= HERMES_HOME). Mounted at the same
+  # path here, so the paths written into the volume are valid in both pods.
+  home: /opt/data
+  # Required. Hermes webhook URL for the email route, e.g. http://hermes-webhook:8644/webhooks/email
+  webhookURL: ""
+  webhookPort: 8644
+  # Labels of the Hermes pod. When set, watch is scheduled onto the same node (podAffinity),
+  # which a ReadWriteOnce volume (local-path, hostPath) needs, and the network policies use them.
+  podSelector: {}
+  # The secret holding the Hermes webhook secret (WEBHOOK_SECRET), sent as X-Gitlab-Token.
+  webhookSecret:
+    name: ""
+    key: WEBHOOK_SECRET
+
+# Paths on the Hermes volume. Empty = under hermes.home, as below.
+paths:
+  binDir: ""              # <home>/.local/bin: `email` for the agent (a wrapper; see install.binary)
+  configDir: ""           # <home>/.config/email: accounts and tokens
+  stateDir: ""            # <home>/.local/state/email: sync cursors, audit log, watch state
+  # Where the agent's container mounts this chart's ConfigMap (policy.toml). Watch uses the same path.
+  policyMount: /etc/email
+
+install:
+  # Copy the email binary onto the volume for the agent: <binDir>/email is a wrapper that pins
+  # EMAIL_POLICY_FILE, EMAIL_CONFIG_DIR and EMAIL_STATE_DIR (Hermes terminal sessions rewrite HOME).
+  binary: true
+  # Write the email skill (skills/comms/email/SKILL.md) and the route script (scripts/email-summary.py).
+  files: true
+
+# policy.toml, written by the deployer; the agent can only read it. Templates: docs/policy/ in the
+# repository (read, draft, send-reply-only, send-open). This default is docs/policy/draft.toml.
+policy: |
+  # email policy: DRAFT (recommended start). The agent reads and prepares
+  # drafts (replies, forwards, new messages) for you to send yourself, and can
+  # mark and move mail. It cannot send, trash or delete.
+  # Install: ~/.config/email/policy.toml (or $EMAIL_POLICY_FILE). Read-only to the agent.
+  [default]
+  mode = "draft"
+  # Appended to every body the agent writes; "" disables.
+  signoff = "\n\n-- \nDrafted by my assistant."
+
+  [send]                      # applies to forward drafts already
+  allowed_recipient_domains = []   # empty: only the mailbox's own domain counts as internal
+  block_external_forward = true    # no forwarding received mail outside that domain, not even as a draft
+
+  [delete]
+  enabled = false             # no trash, no delete (draft delete is always allowed)
+
+  [watch]
+  ignore_senders = ["noreply@", "no-reply@", "notifications@", "donotreply@"]
+  ignore_subjects = []
+  only_unread = true
+
+# Appended to the skill as "## This deployment": which accounts exist, house rules, language.
+skillNotes: ""
+
+# For the route script's message list (scripts/email-summary.json).
+summary:
+  timezone: ""            # IANA zone, e.g. Australia/Sydney; default: the container's (UTC)
+  accountLabels: {}       # alias: label, e.g. work: "work mailbox (you@example.com)"
+
+watch:
+  accounts: []            # aliases to watch; empty = every logged-in account
+  debounce: 60s
+  pollInterval: 60s
+  noIdle: false           # for IMAP servers that accept IDLE but never push (email doctor --idle-test)
+  logLevel: info
+  extraArgs: []
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {cpu: 200m, memory: 128Mi}
+
+# Create or update the email-triage cron job (email hermes seed-cron) whenever watch starts. It
+# needs the hermes CLI, so this init container runs the Hermes image (give the same one the
+# agent runs). It fails open: a failure is logged and watch starts anyway.
+seedCron:
+  enabled: false
+  image: ""               # e.g. nousresearch/hermes-agent@sha256:…
+  hermesBin: /opt/hermes/bin/hermes
+  deliver: ""             # required when enabled: platform:chat_id, e.g. discord:123456789
+  name: email-triage      # the webhook route's cron_job must name the same job
+  schedule: every 2h      # fallback schedule; new mail runs it at once through the webhook route
+  prompt: ""              # empty = the prompt released with email-cli
+  resources:
+    requests: {cpu: 10m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+networkPolicy:
+  enabled: true
+  # Egress from watch: DNS, the Hermes pod on webhookPort, and (allowInternet) the public internet
+  # with private ranges cut out, which covers Microsoft 365, Gmail and hosted IMAP servers.
+  allowInternet: true
+  # Extra egress rules, e.g. an in-cluster mail server:
+  #   - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: mailu}}}]
+  #     ports: [{port: 993, protocol: TCP}, {port: 465, protocol: TCP}]
+  extraEgress: []
+  # Also create an ingress policy on the Hermes pod that lets watch reach webhookPort. Only turn
+  # this on if Hermes already has an ingress NetworkPolicy: on a pod without one, the first
+  # ingress policy blocks every other connection to it.
+  hermesIngress: false
+  dns:
+    namespace: kube-system
+    podSelector: {k8s-app: kube-dns}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10000        # the owner of the Hermes volume (hermes-agent runs as 10000)
+  runAsGroup: 10000
+  fsGroup: 10000
+  seccompProfile: {type: RuntimeDefault}
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: ["ALL"]}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}              # replaces the automatic podAffinity to hermes.podSelector
+podAnnotations: {}
+podLabels: {}
+nameOverride: ""
+fullnameOverride: ""

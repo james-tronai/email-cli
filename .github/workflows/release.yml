@@ -4,7 +4,7 @@ on:
     tags: ["v*"]
 permissions:
   contents: write # create the release and upload assets (GITHUB_TOKEN is enough)
-  packages: write # push ghcr.io/james-tronai/email-cli
+  packages: write # push ghcr.io/james-tronai/email-cli and the chart (ghcr.io/james-tronai/charts/hermes-email)
   id-token: write # keyless cosign signatures (Sigstore, GitHub OIDC)
 jobs:
   release:
@@ -21,6 +21,15 @@ jobs:
           test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
           go vet ./...
           go test -race -count=1 ./...
+      # The chart is released with the binary: version and appVersion must be the tag.
+      - name: chart version
+        run: |
+          v="$(awk '$1 == "version:" {print $2}' charts/hermes-email/Chart.yaml)"
+          a="$(awk '$1 == "appVersion:" {print $2}' charts/hermes-email/Chart.yaml)"
+          if [ "v$v" != "$GITHUB_REF_NAME" ] || [ "$a" != "$GITHUB_REF_NAME" ]; then
+            echo "charts/hermes-email/Chart.yaml has version $v, appVersion $a; the tag is $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
       # Release notes are written by hand, because they must say what the
       # deployment has to change. Without the file the release gets a
       # one-line pointer to the commits.
@@ -63,3 +72,16 @@ jobs:
           mkdir -p "$RUNNER_TEMP/out"
           docker run --rm --user "$(id -u)" -v "$RUNNER_TEMP/out:/out" "$img" self-install --dest /out
           "$RUNNER_TEMP/out/email" version | grep -q "\"version\": \"${GITHUB_REF_NAME}\""
+      - uses: azure/setup-helm@v4
+      # The chart as an OCI artifact (signed like the image) and as a release asset.
+      - name: chart
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          helm package charts/hermes-email -d "$RUNNER_TEMP/chart"
+          tgz="$(ls "$RUNNER_TEMP"/chart/hermes-email-*.tgz)"
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          helm push "$tgz" oci://ghcr.io/james-tronai/charts 2>&1 | tee "$RUNNER_TEMP/push.txt"
+          digest="$(awk '/^Digest:/ {print $2}' "$RUNNER_TEMP/push.txt")"
+          cosign sign --yes "ghcr.io/james-tronai/charts/hermes-email@$digest"
+          gh release upload "$GITHUB_REF_NAME" "$tgz"

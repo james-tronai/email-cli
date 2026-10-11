@@ -1,0 +1,59 @@
+# Example: Hermes in namespace "hermes" as Deployment "hermes-alice", HERMES_HOME on PVC
+# "hermes-alice-data" at /opt/data, webhook Service "hermes-alice-webhook" on 8644, and the webhook
+# secret in Secret "hermes-alice-webhook". Install next to it:
+#   helm install alice-email oci://ghcr.io/james-tronai/charts/hermes-email -n hermes -f values.yaml
+fullnameOverride: hermes-alice-email
+
+hermes:
+  pvc: hermes-alice-data
+  home: /opt/data
+  webhookURL: http://hermes-alice-webhook:8644/webhooks/email
+  podSelector: {app.kubernetes.io/name: hermes, app.kubernetes.io/instance: alice}
+  webhookSecret: {name: hermes-alice-webhook, key: WEBHOOK_SECRET}
+
+watch:
+  accounts: [work]          # empty = every logged-in account
+
+summary:
+  timezone: Europe/London
+  accountLabels: {work: "work mailbox (alice@example.com)"}
+
+skillNotes: |
+  - Your user is Alice. The only account is `work` (alice@example.com, Microsoft 365).
+  - Write replies in Alice's voice: short and friendly, British spelling.
+
+seedCron:
+  enabled: true
+  image: nousresearch/hermes-agent:latest   # pin the digest your Hermes Deployment runs
+  deliver: telegram:123456789
+
+# The Hermes side (your Deployment and config.yaml) needs, besides WEBHOOK_ENABLED=true and
+# WEBHOOK_SECRET in its environment:
+#
+#   containers:
+#     - name: hermes
+#       volumeMounts:
+#         - {name: email, mountPath: /etc/email, readOnly: true}   # policy.toml, read-only for the agent
+#   volumes:
+#     - name: email
+#       configMap: {name: hermes-alice-email}
+#
+# and in config.yaml the output of `email hermes config`:
+#
+#   platforms:
+#     webhook:
+#       extra:
+#         port: 8644
+#         routes:
+#           email:
+#             script: email-summary.py
+#             cron_job: email-triage
+#             prompt: |
+#               {count} new message(s) in {account_label}, reported by email watch:
+#
+#               {summary}
+#
+#               Handle these first (read the important ones with `email {account_flag} get <id> --format text`), then run the usual sync.
+#   skills:
+#     disabled: [google-workspace, himalaya, email-inbox-triage]
+#     auto_load: [email]

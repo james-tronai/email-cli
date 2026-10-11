@@ -1,0 +1,185 @@
+{{- $fullname := include "hermes-email.fullname" . -}}
+{{- if not .Values.hermes.pvc }}{{ fail "hermes.pvc is required: the PersistentVolumeClaim Hermes keeps HERMES_HOME on" }}{{ end -}}
+{{- if not .Values.hermes.webhookURL }}{{ fail "hermes.webhookURL is required, e.g. http://hermes-webhook:8644/webhooks/email" }}{{ end -}}
+{{- if and .Values.seedCron.enabled (not .Values.seedCron.image) }}{{ fail "seedCron.image is required: the Hermes image (it has the hermes CLI)" }}{{ end -}}
+{{- if and .Values.seedCron.enabled (not .Values.seedCron.deliver) }}{{ fail "seedCron.deliver is required, e.g. discord:<chat_id>" }}{{ end -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-watch
+  labels: {{- include "hermes-email.labels" . | nindent 4 }}
+    app.kubernetes.io/component: watch
+spec:
+  # Exactly one: watch keeps per-account state, and a second copy would notify twice.
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {{- include "hermes-email.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "hermes-email.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}{{ toYaml . | nindent 8 }}{{ end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity: {{- toYaml .Values.affinity | nindent 8 }}
+      {{- else if .Values.hermes.podSelector }}
+      # Same node as Hermes: the volume may be ReadWriteOnce (local-path).
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {{- toYaml .Values.hermes.podSelector | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+      initContainers:
+        {{- if .Values.install.binary }}
+        # <binDir>/email for the agent: a wrapper that pins policy and directories, plus the binary.
+        - name: install-binary
+          image: {{ include "hermes-email.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - self-install
+            - --dest
+            - {{ include "hermes-email.binDir" . | quote }}
+            - --env
+            - {{ printf "EMAIL_POLICY_FILE=%s" (include "hermes-email.policyFile" .) | quote }}
+            - --env
+            - {{ printf "EMAIL_CONFIG_DIR=%s" (include "hermes-email.configDir" .) | quote }}
+            - --env
+            - {{ printf "EMAIL_STATE_DIR=%s" (include "hermes-email.stateDir" .) | quote }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          resources: {{- toYaml .Values.watch.resources | nindent 12 }}
+          volumeMounts: {{- include "hermes-email.mounts" . | nindent 12 }}
+        {{- end }}
+        {{- if .Values.install.files }}
+        # skills/comms/email/SKILL.md and scripts/email-summary.py(+json) under HERMES_HOME.
+        - name: hermes-files
+          image: {{ include "hermes-email.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - hermes
+            - files
+            - --hermes-home
+            - {{ .Values.hermes.home | quote }}
+            {{- if .Values.skillNotes }}
+            - --skill-notes
+            - {{ printf "%s/skill-notes.md" (trimSuffix "/" .Values.paths.policyMount) | quote }}
+            {{- end }}
+            {{- with .Values.summary.timezone }}
+            - --timezone
+            - {{ . | quote }}
+            {{- end }}
+            {{- range $alias, $label := .Values.summary.accountLabels }}
+            - --account-label
+            - {{ printf "%s=%s" $alias $label | quote }}
+            {{- end }}
+          env: {{- include "hermes-email.env" . | nindent 12 }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          resources: {{- toYaml .Values.watch.resources | nindent 12 }}
+          volumeMounts: {{- include "hermes-email.mounts" . | nindent 12 }}
+        {{- end }}
+        {{- if .Values.seedCron.enabled }}
+        # Create or update the triage cron job with the Hermes CLI; fails open.
+        - name: seed-cron
+          image: {{ .Values.seedCron.image }}
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c", '"$0" "$@" || echo "WARN: email hermes seed-cron failed; watch starts anyway" >&2']
+          args:
+            {{- if .Values.install.binary }}
+            - {{ printf "%s/email" (include "hermes-email.binDir" .) | quote }}
+            {{- else }}
+            - email
+            {{- end }}
+            - hermes
+            - seed-cron
+            - --hermes-home
+            - {{ .Values.hermes.home | quote }}
+            - --hermes-bin
+            - {{ .Values.seedCron.hermesBin | quote }}
+            - --deliver
+            - {{ .Values.seedCron.deliver | quote }}
+            - --cron-name
+            - {{ .Values.seedCron.name | quote }}
+            - --schedule
+            - {{ .Values.seedCron.schedule | quote }}
+            {{- if .Values.seedCron.prompt }}
+            - --prompt-file
+            - {{ printf "%s/cron-prompt.md" (trimSuffix "/" .Values.paths.policyMount) | quote }}
+            {{- end }}
+          env:
+            {{- include "hermes-email.env" . | nindent 12 }}
+            - {name: HERMES_HOME, value: {{ .Values.hermes.home | quote }}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources: {{- toYaml .Values.seedCron.resources | nindent 12 }}
+          volumeMounts: {{- include "hermes-email.mounts" . | nindent 12 }}
+        {{- end }}
+      containers:
+        - name: watch
+          image: {{ include "hermes-email.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - watch
+            {{- range .Values.watch.accounts }}
+            - -a
+            - {{ . | quote }}
+            {{- end }}
+            - --notify-url
+            - {{ .Values.hermes.webhookURL | quote }}
+            {{- if .Values.hermes.webhookSecret.name }}
+            - --notify-token-env
+            - EMAIL_WATCH_NOTIFY_TOKEN
+            {{- end }}
+            - --debounce
+            - {{ .Values.watch.debounce | quote }}
+            - --poll-interval
+            - {{ .Values.watch.pollInterval | quote }}
+            - --state-dir
+            - {{ printf "%s/watch" (include "hermes-email.stateDir" .) | quote }}
+            - --health-addr
+            - 127.0.0.1:8645
+            - --log-level
+            - {{ .Values.watch.logLevel | quote }}
+            {{- if .Values.watch.noIdle }}
+            - --no-idle
+            {{- end }}
+            {{- range .Values.watch.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            {{- include "hermes-email.env" . | nindent 12 }}
+            {{- if .Values.hermes.webhookSecret.name }}
+            - name: EMAIL_WATCH_NOTIFY_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.hermes.webhookSecret.name | quote }}, key: {{ .Values.hermes.webhookSecret.key | quote }}}
+            {{- end }}
+          # /healthz listens on loopback only, so an exec probe. 503 once every account has been
+          # offline for 10 minutes. Liveness only: there is no Service in front of watch.
+          livenessProbe:
+            exec:
+              command: ["/email", "watch", "healthz", "--health-addr", "127.0.0.1:8645", "-q"]
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          resources: {{- toYaml .Values.watch.resources | nindent 12 }}
+          volumeMounts: {{- include "hermes-email.mounts" . | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: {{ .Values.hermes.pvc | quote }}}
+        - name: config
+          configMap: {name: {{ $fullname }}}

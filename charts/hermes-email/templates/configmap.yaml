@@ -1,0 +1,15 @@
+{{- if not .Values.policy }}{{ fail "policy is required (see docs/policy/ in the email-cli repository)" }}{{ end }}
+# Mounted read-only at paths.policyMount in watch and, by you, in the Hermes container.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hermes-email.fullname" . }}
+  labels: {{- include "hermes-email.labels" . | nindent 4 }}
+data:
+  policy.toml: {{ .Values.policy | quote }}
+  {{- with .Values.skillNotes }}
+  skill-notes.md: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.seedCron.prompt }}
+  cron-prompt.md: {{ . | quote }}
+  {{- end }}

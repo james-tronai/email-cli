@@ -57,3 +57,33 @@ jobs:
           /tmp/bin/email auth login -a demo --provider fake --mode draft -q
           cp docs/policy/draft.toml /tmp/email/config/policy.toml
           /tmp/bin/email doctor --no-update-check --format text
+
+  # The Helm chart: lint, then a real install in kind with a stand-in Hermes
+  # (charts/hermes-email/ci/e2e.sh), using an image built from this commit.
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+      - name: lint
+        run: |
+          helm lint charts/hermes-email --strict --set hermes.pvc=data --set hermes.webhookURL=http://hermes:8644/webhooks/email
+          helm lint charts/hermes-email --strict -f charts/hermes-email/examples/values.yaml
+          helm template x charts/hermes-email -f charts/hermes-email/examples/values.yaml >/dev/null
+          ! helm template x charts/hermes-email 2>/dev/null   # hermes.pvc and webhookURL are required
+      - name: image
+        run: |
+          mkdir -p ctx/linux/amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=ci" -o ctx/linux/amd64/email ./cmd/email
+          cp Dockerfile LICENSE ctx/
+          docker build -t email-cli:ci ctx
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: ci
+      - name: e2e
+        run: |
+          kind load docker-image email-cli:ci --name ci
+          sh charts/hermes-email/ci/e2e.sh
