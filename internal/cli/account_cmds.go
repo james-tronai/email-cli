@@ -23,15 +23,6 @@ import (
 	"github.com/james-tronai/email-cli/internal/provider/msgraph"
 )
 
-func (a *app) versionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "version",
-		Short: "Print version information",
-		Args:  exactArgs(0),
-		RunE:  func(*cobra.Command, []string) error { return a.output(a.build) },
-	}
-}
-
 func (a *app) authCmd() *cobra.Command {
 	c := &cobra.Command{Use: "auth", Short: "Log in, inspect and log out accounts"}
 	c.AddCommand(a.authLoginCmd(), a.authStatusCmd(), a.authLogoutCmd())

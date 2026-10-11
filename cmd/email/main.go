@@ -3,6 +3,10 @@ package main
 import (
 	"os"
 
+	// Mozilla's CA roots, used only where the system has none (the
+	// FROM scratch image, minimal containers). A system store wins.
+	_ "golang.org/x/crypto/x509roots/fallback"
+
 	"github.com/james-tronai/email-cli/internal/cli"
 )
 

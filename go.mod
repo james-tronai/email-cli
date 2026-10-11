@@ -10,6 +10,7 @@ require (
 	github.com/emersion/go-smtp v0.25.0
 	github.com/itchyny/gojq v0.12.19
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20261009200856-99e4382b128e
 	golang.org/x/net v0.59.0
 	golang.org/x/oauth2 v0.37.0
 )

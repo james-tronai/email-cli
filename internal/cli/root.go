@@ -150,6 +150,7 @@ Exit codes: 0 ok, 2 usage, 3 auth required, 4 policy denied, 5 provider error, 6
 
 	root.AddCommand(
 		a.versionCmd(),
+		a.selfInstallCmd(),
 		a.authCmd(),
 		a.accountsCmd(),
 		a.capabilitiesCmd(),
