@@ -7,6 +7,13 @@ set -eu
 ns=hermes
 k() { kubectl -n "$ns" "$@"; }
 chart="$(dirname "$0")/.."
+diagnose() {
+	k get pods -o wide || true
+	k describe pods -l app.kubernetes.io/component=watch | tail -40 || true
+	k logs -l app.kubernetes.io/component=watch --all-containers --prefix --tail=40 || true
+	k get events --sort-by=.lastTimestamp | tail -20 || true
+}
+trap 'if [ $? -ne 0 ]; then diagnose; fi' EXIT
 
 kubectl create namespace "$ns"
 k apply -f - <<'YAML'
