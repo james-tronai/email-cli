@@ -6,6 +6,8 @@ import (
 	// Mozilla's CA roots, used only where the system has none (the
 	// FROM scratch image, minimal containers). A system store wins.
 	_ "golang.org/x/crypto/x509roots/fallback"
+	// Time zones for --timezone in images without /usr/share/zoneinfo (FROM scratch).
+	_ "time/tzdata"
 
 	"github.com/james-tronai/email-cli/internal/cli"
 )
