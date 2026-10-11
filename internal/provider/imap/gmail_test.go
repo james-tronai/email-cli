@@ -525,3 +525,20 @@ func TestGmailBadPasswordIsAuthError(t *testing.T) {
 		t.Fatalf("normal password: %v", err)
 	}
 }
+
+// After LOGIN the client identifies itself with ID (163 requires it), with
+// nothing about the user or host.
+func TestLoginSendsID(t *testing.T) {
+	e := newGmailEnv(t, policy.ModeRead)
+	if _, err := e.p.conn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	cmds := e.f.commands()
+	i := slices.Index(cmds, "LOGIN")
+	if i < 0 || !slices.Contains(cmds[i:], "ID") {
+		t.Fatalf("commands %v", cmds)
+	}
+	if strings.Contains(clientID, gmUser) || !strings.Contains(clientID, `"name" "email-cli"`) {
+		t.Fatalf("ID %s", clientID)
+	}
+}

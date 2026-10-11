@@ -220,6 +220,8 @@ type gmSession struct {
 	readOnly bool
 	// told is the message count this session last reported (EXISTS).
 	told int
+	// clientID is what the client sent with ID.
+	clientID []any
 }
 
 func (f *fakeGmail) serve(nc net.Conn) {
@@ -334,6 +336,10 @@ func (s *gmSession) handle(cmd string, args []any) (string, string) {
 	case "LOGOUT":
 		s.out("* BYE LOGOUT Requested")
 		return "OK", "73 good day (Success)"
+	case "ID":
+		s.clientID = args
+		s.out(`* ID ("name" "GImap" "vendor" "Google, Inc." "support-url" "https://support.google.com/mail")`)
+		return "OK", "Success"
 	case "NOOP":
 		return "OK", "Success"
 	case "LIST":

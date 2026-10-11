@@ -148,10 +148,20 @@ func login(ctx context.Context, c *conn, user, pass string) error {
 		}
 	}
 	if c.caps == nil {
-		return c.capability(ctx)
+		if err := c.capability(ctx); err != nil {
+			return err
+		}
+	}
+	if c.has("ID") {
+		// RFC 2971. NetEase (163) refuses SELECT with "Unsafe Login" until
+		// the client identifies itself. Failure here is not fatal.
+		_, _ = c.run(ctx, raw("ID"), raw(clientID))
 	}
 	return nil
 }
+
+// clientID is what the ID command sends: no version, host or user data.
+const clientID = `("name" "email-cli" "vendor" "james-tronai" "support-url" "https://github.com/james-tronai/email-cli")`
 
 // ---- mailboxes ----
 

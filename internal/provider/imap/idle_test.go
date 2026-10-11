@@ -133,3 +133,21 @@ func TestIdleReturnsForMailReportedDuringSync(t *testing.T) {
 		t.Fatalf("%+v %v", res, err)
 	}
 }
+
+func TestServerInfoAndUIDNext(t *testing.T) {
+	e := newGmailEnv(t, policy.ModeRead)
+	ctx := context.Background()
+	info, err := e.p.ServerInfo(ctx)
+	if err != nil || !info.Gmail || !info.Idle || !info.CondStore || !info.ID {
+		t.Fatalf("%+v %v", info, err)
+	}
+	before, err := e.p.InboxUIDNext(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.f.deliver(lunchMsg)
+	after, err := e.p.InboxUIDNext(ctx)
+	if err != nil || after <= before {
+		t.Fatalf("UIDNEXT %d → %d %v", before, after, err)
+	}
+}

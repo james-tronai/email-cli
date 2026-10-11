@@ -50,6 +50,7 @@ type Servers struct {
 	IMAPPort int    `json:"imap_port"`
 	SMTPHost string `json:"smtp_host,omitempty"`
 	SMTPPort int    `json:"smtp_port,omitempty"`
+	Preset   string `json:"preset,omitempty"` // the --preset (or address) they came from
 }
 
 // Domain is the domain of the locked mailbox address.

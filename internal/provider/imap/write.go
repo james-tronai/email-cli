@@ -430,3 +430,25 @@ func (p *Provider) Sync(ctx context.Context, o provider.SyncOptions) (*provider.
 	b, _ := json.Marshal(cur)
 	return &provider.SyncResult{Messages: msgs, State: string(b)}, nil
 }
+
+// ServerInfo is what `email doctor` reports about the IMAP server.
+type ServerInfo struct {
+	Gmail     bool `json:"gmail_extensions"` // X-GM-EXT-1
+	Idle      bool `json:"idle"`
+	CondStore bool `json:"condstore"`
+	ID        bool `json:"id"`
+}
+
+func (p *Provider) ServerInfo(ctx context.Context) (ServerInfo, error) {
+	c, err := p.conn(ctx)
+	if err != nil {
+		return ServerInfo{}, err
+	}
+	return ServerInfo{Gmail: c.has("X-GM-EXT-1"), Idle: c.has("IDLE"), CondStore: c.has("CONDSTORE"), ID: c.has("ID")}, nil
+}
+
+// InboxUIDNext is INBOX's UIDNEXT: it grows when mail arrives.
+func (p *Provider) InboxUIDNext(ctx context.Context) (uint32, error) {
+	st, err := p.status(ctx, "INBOX")
+	return st.UIDNext, err
+}
