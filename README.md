@@ -104,6 +104,18 @@ docker run --rm -v email-data:/data ghcr.io/james-tronai/email-cli:v0.7.0 versio
 - **Updates**: `email version --check` says whether a newer release exists. It never downloads anything.
 - **Release assets**: `email_<os>_<arch>` (bare binaries), `checksums.txt`, `checksums.txt.sigstore.json`, one SBOM per binary, and `install.sh`. How releases are cut and verified: [docs/releasing.md](docs/releasing.md).
 
+## Hermes
+
+`email hermes install` connects a Hermes agent on the same machine:
+- the skill and the webhook route script;
+- a policy;
+- `email watch` as a systemd or launchd service;
+- the triage cron job.
+
+It then prints the config.yaml snippet to merge by hand. On Kubernetes, the Helm chart [charts/hermes-email](charts/hermes-email/README.md) does the same next to an existing Hermes Deployment. New mail then reaches you within about a minute and a half, and nothing is said when nothing matters. Details: [docs/hermes.md](docs/hermes.md).
+
+The skill alone, for any agent that reads `SKILL.md` files: `email hermes skill`.
+
 ## Development
 
 ```sh
