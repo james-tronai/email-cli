@@ -99,7 +99,7 @@ brew install james-tronai/tap/email
 docker run --rm -v email-data:/data ghcr.io/james-tronai/email-cli:v0.7.0 version
 ```
 
-- **Options**: `install.sh --help` lists them. `--verify` also checks the release's keyless cosign signature, and needs `cosign`. While the repository is private, the script reads `$GITHUB_TOKEN` or `--token-file`. The token never goes on a command line.
+- **Options**: `install.sh --help` lists them. `--verify` also checks the release's keyless cosign signature, and needs `cosign`. No GitHub token is needed.
 - **Kubernetes initContainer**: the image has no shell or `cp`. Use `email self-install --dest /opt/data/.local/bin` to copy the binary onto a shared volume.
 - **Updates**: `email version --check` says whether a newer release exists. It never downloads anything.
 - **Release assets**: `email_<os>_<arch>` (bare binaries), `checksums.txt`, `checksums.txt.sigstore.json`, one SBOM per binary, and `install.sh`. How releases are cut and verified: [docs/releasing.md](docs/releasing.md).

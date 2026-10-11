@@ -29,9 +29,8 @@ jobs:
           version: "~> v2"
           args: check
 
-  # install.sh in clean containers, against the latest published release.
-  # The repository is private for now, so the token path (curl) is tested;
-  # once it is public, drop GITHUB_TOKEN to test the anonymous path.
+  # install.sh in clean containers, against the latest published release,
+  # anonymously (no token), as a new user would.
   install:
     runs-on: ubuntu-latest
     strategy:
@@ -46,8 +45,6 @@ jobs:
           if command -v apk >/dev/null; then apk add --no-cache curl ca-certificates
           else apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null; fi
       - name: install.sh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           sh install.sh --dest /tmp/bin
           /tmp/bin/email version

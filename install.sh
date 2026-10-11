@@ -7,14 +7,12 @@
 # Options:
 #   --version vX.Y.Z   release to install (default: the latest)
 #   --dest DIR         where to put `email` (default: ~/.local/bin; /usr/local/bin as root)
-#   --token-file FILE  GitHub token for a private repository (else $GITHUB_TOKEN)
 #   --verify           also check the cosign signature of checksums.txt (needs cosign)
 #   --force            reinstall even if that version is already there
 #
 # Picks email_<os>_<arch> for linux/darwin on amd64/arm64 and checks it
 # against the release's checksums.txt before installing. Running it again
-# with the same version changes nothing. The token is never put on a
-# command line or printed.
+# with the same version changes nothing. No GitHub token is needed.
 set -eu
 
 REPO="james-tronai/email-cli"
@@ -24,7 +22,6 @@ BASE_URL="${EMAIL_INSTALL_BASE_URL:-}"
 
 version=latest
 dest=""
-token_file=""
 verify=0
 force=0
 
@@ -40,16 +37,13 @@ while [ $# -gt 0 ]; do
 	--version=*) version="${1#*=}"; shift ;;
 	--dest) dest="${2:?--dest needs a value}"; shift 2 ;;
 	--dest=*) dest="${1#*=}"; shift ;;
-	--token-file) token_file="${2:?--token-file needs a value}"; shift 2 ;;
-	--token-file=*) token_file="${1#*=}"; shift ;;
 	--verify) verify=1; shift ;;
 	--force) force=1; shift ;;
 	-h | --help)
 		cat <<'USAGE'
-usage: install.sh [--version vX.Y.Z] [--dest DIR] [--token-file FILE] [--verify] [--force]
+usage: install.sh [--version vX.Y.Z] [--dest DIR] [--verify] [--force]
   --version   release to install (default: the latest)
   --dest      where to put `email` (default: ~/.local/bin; /usr/local/bin as root)
-  --token-file GitHub token for a private repository (else $GITHUB_TOKEN)
   --verify    also check the cosign signature of checksums.txt (needs cosign)
   --force     reinstall even if that version is already there
 USAGE
@@ -81,12 +75,6 @@ aarch64 | arm64) arch=arm64 ;;
 esac
 asset="email_${os}_${arch}"
 
-token="${GITHUB_TOKEN:-}"
-if [ -n "$token_file" ]; then
-	[ -r "$token_file" ] || die "cannot read --token-file $token_file"
-	token="$(tr -d ' \r\n' <"$token_file")"
-fi
-
 if command -v curl >/dev/null 2>&1; then
 	dl=curl
 elif command -v wget >/dev/null 2>&1; then
@@ -99,39 +87,29 @@ retry_all=""
 if [ "$dl" = curl ] && curl --help all 2>/dev/null | grep -q -- --retry-all-errors; then
 	retry_all="--retry-all-errors"
 fi
-if [ -n "$token" ] && [ "$dl" != curl ]; then
-	die "downloading with a token needs curl (it keeps the token off the command line)"
-fi
 
 tmp="$(mktemp -d 2>/dev/null || mktemp -d -t email-install)"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-# fetch URL OUT [ACCEPT]: the token, if any, goes through a curl config on
-# stdin, never argv. curl drops it on the redirect to the asset store.
+# fetch URL OUT
 fetch() {
 	if [ "$dl" = curl ]; then
-		{
-			[ -n "$token" ] && printf 'header = "Authorization: Bearer %s"\n' "$token"
-			[ -n "${3:-}" ] && printf 'header = "Accept: %s"\n' "$3"
-			printf 'header = "User-Agent: email-cli-install"\n'
-		} | curl -fsSL --proto '=https,http' --retry 3 $retry_all -K - -o "$2" "$1"
+		curl -fsSL --proto '=https,http' --retry 3 $retry_all -A email-cli-install -o "$2" "$1"
 	else
 		wget -q -T 30 -U email-cli-install -O "$2" "$1" || { sleep 2 && wget -q -T 30 -U email-cli-install -O "$2" "$1"; }
 	fi
 }
 
-# split_json puts each JSON member on its own line (no jq needed).
-split_json() { awk '{ gsub(/[,{}]/, "\n"); print }'; }
-
-# json_field NAME FILE: the first "NAME": "value" in a GitHub API reply.
+# json_field NAME FILE: the first "NAME": "value" in a GitHub API reply
+# (each member on its own line first; no jq needed).
 json_field() {
-	split_json <"$2" | sed -n "s/^[[:space:]]*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
+	awk '{ gsub(/[,{}]/, "\n"); print }' <"$2" | sed -n "s/^[[:space:]]*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
 }
 
 if [ "$version" = latest ]; then
 	[ -z "$BASE_URL" ] || die "--version is required with EMAIL_INSTALL_BASE_URL"
-	fetch "$API/repos/$REPO/releases/latest" "$tmp/release.json" "application/vnd.github+json" ||
-		die "cannot read the latest release (private repository? set GITHUB_TOKEN or --token-file)"
+	fetch "$API/repos/$REPO/releases/latest" "$tmp/release.json" ||
+		die "cannot read the latest release from $API"
 	version="$(json_field tag_name "$tmp/release.json")"
 	[ -n "$version" ] || die "no tag_name in the latest release"
 fi
@@ -143,36 +121,13 @@ if [ "$force" = 0 ] && [ -x "$target" ] &&
 	exit 0
 fi
 
-# asset_url NAME: where to download NAME from.
-asset_url() {
-	if [ -n "$BASE_URL" ]; then
-		printf '%s/%s/%s\n' "$BASE_URL" "$version" "$1"
-	elif [ -z "$token" ]; then
-		printf 'https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$version" "$1"
-	else
-		# Private repository: only the API asset URL accepts a token.
-		if [ ! -f "$tmp/tag.json" ]; then
-			fetch "$API/repos/$REPO/releases/tags/$version" "$tmp/tag.json" "application/vnd.github+json" ||
-				die "release $version not found"
-		fi
-		split_json <"$tmp/tag.json" | awk -v want="$1" '
-			/"url"[[:space:]]*:[[:space:]]*"[^"]*\/releases\/assets\/[0-9]+"/ {
-				u = $0; sub(/^[^"]*"url"[[:space:]]*:[[:space:]]*"/, "", u); sub(/".*/, "", u); next
-			}
-			/"name"[[:space:]]*:/ && u != "" {
-				n = $0; sub(/^[^"]*"name"[[:space:]]*:[[:space:]]*"/, "", n); sub(/".*/, "", n)
-				if (n == want) { print u; exit }
-				u = ""
-			}'
-	fi
-}
-
 get_asset() {
-	url="$(asset_url "$1")"
-	[ -n "$url" ] || die "release $version has no asset $1"
-	accept=""
-	[ -n "$token" ] && [ -z "$BASE_URL" ] && accept="application/octet-stream"
-	fetch "$url" "$tmp/$1" "$accept" || die "download of $1 ($version) failed"
+	if [ -n "$BASE_URL" ]; then
+		url="$BASE_URL/$version/$1"
+	else
+		url="https://github.com/$REPO/releases/download/$version/$1"
+	fi
+	fetch "$url" "$tmp/$1" || die "download of $1 ($version) failed"
 }
 
 say "installing email $version ($os/$arch) into $dest"

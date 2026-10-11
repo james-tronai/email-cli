@@ -3,7 +3,7 @@ on:
   push:
     tags: ["v*"]
 permissions:
-  contents: write # create the release and upload assets (GITHUB_TOKEN is enough, also for a private repo)
+  contents: write # create the release and upload assets (GITHUB_TOKEN is enough)
   packages: write # push ghcr.io/james-tronai/email-cli
   id-token: write # keyless cosign signatures (Sigstore, GitHub OIDC)
 jobs:

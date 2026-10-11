@@ -43,11 +43,3 @@ cosign verify ghcr.io/james-tronai/email-cli:<tag> \
 ```
 
 `install.sh` does the checksum step always, and the signature step with `--verify`.
-
-## Downloading from a private repository
-
-While the repository is private, anonymous requests get 404. `install.sh` handles this when given `$GITHUB_TOKEN` or `--token-file`; a token needs **Contents: read** on this repository. By hand:
-
-1. `GET https://api.github.com/repos/james-tronai/email-cli/releases/tags/<tag>` with `Authorization: Bearer <token>`.
-2. From `.assets[]`, take the `url` of the asset by `name`. This is an `https://api.github.com/…/releases/assets/<id>` URL. Do not use `browser_download_url`, which does not accept a token.
-3. `GET` that URL with the token and `Accept: application/octet-stream`. The answer is a `302` to a signed storage URL; follow it **without** the token. `curl -L` drops `Authorization` on a cross-host redirect.

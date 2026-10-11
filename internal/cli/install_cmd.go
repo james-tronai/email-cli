@@ -70,9 +70,6 @@ func (a *app) checkVersion(ctx context.Context) versionCheck {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", a.userAgent())
-	if t := os.Getenv("GITHUB_TOKEN"); t != "" {
-		req.Header.Set("Authorization", "Bearer "+t)
-	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		out.CheckError = err.Error()
