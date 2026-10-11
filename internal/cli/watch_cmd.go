@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -30,6 +31,7 @@ type watchFlags struct {
 	accounts     []string
 	notifyURL    string
 	notifyEnv    string
+	notifyFile   string
 	debounce     time.Duration
 	pollInterval time.Duration
 	stateDir     string
@@ -51,7 +53,9 @@ per account. Only metadata is sent (no bodies); nothing is changed or sent
 in the mailbox, and read mode is enough.
 
 The token for the X-Gitlab-Token header is read from the environment
-variable named by --notify-token-env, never from the command line.
+variable named by --notify-token-env, or from --notify-token-file (a file
+holding the token alone, or an EMAIL_WATCH_NOTIFY_TOKEN=… line), never from
+the command line.
 With --dry-run, notifications are printed to stdout instead of POSTed.
 
 Logs are JSON lines on stderr. GET /healthz on --health-addr is 200 while
@@ -64,6 +68,7 @@ at least one account is online, 503 once all have been offline 10 minutes.`,
 	fl.StringSliceVarP(&f.accounts, "account", "a", nil, "account alias to watch (repeatable; default: all accounts)")
 	fl.StringVar(&f.notifyURL, "notify-url", "", "webhook URL to POST notifications to")
 	fl.StringVar(&f.notifyEnv, "notify-token-env", "", "environment variable holding the webhook token (sent as X-Gitlab-Token)")
+	fl.StringVar(&f.notifyFile, "notify-token-file", "", "file holding the webhook token, alone or as EMAIL_WATCH_NOTIFY_TOKEN=… (for launchd)")
 	fl.DurationVar(&f.debounce, "debounce", 60*time.Second, "collect new mail this long before notifying")
 	fl.DurationVar(&f.pollInterval, "poll-interval", 60*time.Second, "poll interval (msgraph, gmail, and imap without IDLE)")
 	fl.StringVar(&f.stateDir, "state-dir", "", "watch state (default: <state dir>/watch); separate from `email sync`")
@@ -128,9 +133,16 @@ func (a *app) runWatch(ctx context.Context, f watchFlags) error {
 			return errs.Usage("--notify-url must be an http(s) URL")
 		}
 		token := ""
-		if f.notifyEnv != "" {
+		switch {
+		case f.notifyEnv != "" && f.notifyFile != "":
+			return errs.Usage("use --notify-token-env or --notify-token-file, not both")
+		case f.notifyEnv != "":
 			if token = os.Getenv(f.notifyEnv); token == "" {
 				return errs.Usage("--notify-token-env: $%s is empty or unset", f.notifyEnv)
+			}
+		case f.notifyFile != "":
+			if token, err = readTokenFile(f.notifyFile, "EMAIL_WATCH_NOTIFY_TOKEN"); err != nil {
+				return err
 			}
 		}
 		notifier = &watch.HTTPNotifier{URL: f.notifyURL, Token: token, Log: log}
@@ -284,4 +296,37 @@ func checkLoopback(addr string) error {
 		return errs.Usage("--health-addr must be a loopback address (127.0.0.1:<port>), not %q", addr)
 	}
 	return nil
+}
+
+var envLine = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=`)
+
+// readTokenFile reads a token from a file that holds either the token alone
+// or KEY=VALUE lines (a systemd EnvironmentFile), taking the value of key.
+func readTokenFile(path, key string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", errs.Usage("--notify-token-file: %v", err)
+	}
+	var lines []string
+	for _, l := range strings.Split(string(b), "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" || strings.HasPrefix(l, "#") {
+			continue
+		}
+		if v, ok := strings.CutPrefix(l, key+"="); ok {
+			v = strings.TrimSpace(v)
+			if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
+				v = v[1 : len(v)-1]
+			}
+			if v == "" {
+				break
+			}
+			return v, nil
+		}
+		lines = append(lines, l)
+	}
+	if len(lines) == 1 && !envLine.MatchString(lines[0]) {
+		return lines[0], nil
+	}
+	return "", errs.Usage("--notify-token-file %s: no %s=… line and not a bare token", path, key)
 }

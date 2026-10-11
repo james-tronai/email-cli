@@ -168,6 +168,7 @@ Exit codes: 0 ok, 2 usage, 3 auth required, 4 policy denied, 5 provider error, 6
 		a.syncCmd(),
 		a.watchCmd(),
 		a.doctorCmd(),
+		a.hermesCmd(),
 		a.apiCmd(),
 	)
 	return root

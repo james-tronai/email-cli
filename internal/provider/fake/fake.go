@@ -488,6 +488,16 @@ func (p *Provider) Mark(_ context.Context, id string, o provider.MarkOptions) (*
 func (p *Provider) Sync(_ context.Context, o provider.SyncOptions) (*provider.SyncResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// A long-running watch sees mail that another process (a CLI command,
+	// a test) added since the store was opened.
+	if p.path != "" {
+		if b, err := os.ReadFile(p.path); err == nil {
+			var st state
+			if json.Unmarshal(b, &st) == nil && st.Messages != nil {
+				p.st = st
+			}
+		}
+	}
 	label := o.Label
 	if label == "" {
 		label = provider.LabelInbox
