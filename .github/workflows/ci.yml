@@ -52,3 +52,11 @@ jobs:
           sh install.sh --dest /tmp/bin
           /tmp/bin/email version
           sh install.sh --dest /tmp/bin 2>&1 | grep -q "already installed"
+      - name: doctor (fake mailbox)
+        env:
+          EMAIL_CONFIG_DIR: /tmp/email/config
+          EMAIL_STATE_DIR: /tmp/email/state
+        run: |
+          /tmp/bin/email auth login -a demo --provider fake --mode draft -q
+          cp docs/policy/draft.toml /tmp/email/config/policy.toml
+          /tmp/bin/email doctor --no-update-check --format text
