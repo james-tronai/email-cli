@@ -1,0 +1,22 @@
+# email policy: SEND, OPEN. The agent may also send brand-new messages and
+# forward outside your domain. Only recipient domains (if you list any) and
+# the recipient count limit it. Use only when you are sure; prefer
+# send-reply-only.toml. The account must also log in with --mode send.
+# Install: ~/.config/email/policy.toml (or $EMAIL_POLICY_FILE). Read-only to the agent.
+[default]
+mode = "send"
+signoff = "\n\n-- \nSent by my assistant."
+
+[send]
+allowed_recipient_domains = []   # e.g. ["example.com"] to allow only these; empty = anyone
+max_recipients = 10
+block_external_forward = false
+require_reply_context = false
+
+[delete]
+enabled = false             # still no trash or delete
+
+[watch]
+ignore_senders = ["noreply@", "no-reply@", "notifications@", "donotreply@"]
+ignore_subjects = []
+only_unread = true

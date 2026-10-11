@@ -1,0 +1,20 @@
+# email policy: DRAFT (recommended start). The agent reads and prepares
+# drafts (replies, forwards, new messages) for you to send yourself, and can
+# mark and move mail. It cannot send, trash or delete.
+# Install: ~/.config/email/policy.toml (or $EMAIL_POLICY_FILE). Read-only to the agent.
+[default]
+mode = "draft"
+# Appended to every body the agent writes; "" disables.
+signoff = "\n\n-- \nDrafted by my assistant."
+
+[send]                      # applies to forward drafts already
+allowed_recipient_domains = []   # empty: only the mailbox's own domain counts as internal
+block_external_forward = true    # no forwarding received mail outside that domain, not even as a draft
+
+[delete]
+enabled = false             # no trash, no delete (draft delete is always allowed)
+
+[watch]
+ignore_senders = ["noreply@", "no-reply@", "notifications@", "donotreply@"]
+ignore_subjects = []
+only_unread = true

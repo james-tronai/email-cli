@@ -35,6 +35,7 @@ type watchFlags struct {
 	stateDir     string
 	healthAddr   string
 	logLevel     string
+	noIdle       bool
 }
 
 func (a *app) watchCmd() *cobra.Command {
@@ -68,6 +69,7 @@ at least one account is online, 503 once all have been offline 10 minutes.`,
 	fl.StringVar(&f.stateDir, "state-dir", "", "watch state (default: <state dir>/watch); separate from `email sync`")
 	fl.StringVar(&f.healthAddr, "health-addr", "", "serve GET /healthz here, e.g. 127.0.0.1:8645 (loopback only)")
 	fl.StringVar(&f.logLevel, "log-level", "info", "debug|info|warn|error (debug also logs filtered mail)")
+	fl.BoolVar(&f.noIdle, "no-idle", false, "poll imap accounts too (for servers that accept IDLE but do not push; see `email doctor --idle-test`)")
 	c.AddCommand(a.watchHealthCmd())
 	return c
 }
@@ -185,6 +187,7 @@ func (a *app) runWatch(ctx context.Context, f watchFlags) error {
 		HealthAddr:   f.healthAddr,
 		Log:          log,
 		Audit:        audit.New(a.stateDir),
+		NoIdle:       f.noIdle,
 	})
 	if err != nil {
 		return err

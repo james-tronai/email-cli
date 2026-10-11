@@ -1,0 +1,13 @@
+# email policy: READ. The agent can list, search, read and download
+# attachments. It cannot write drafts, change or send anything.
+# Install: ~/.config/email/policy.toml (or $EMAIL_POLICY_FILE). Read-only to the agent.
+[default]
+mode = "read"
+
+[delete]
+enabled = false
+
+[watch]                     # what never wakes the agent (email watch)
+ignore_senders = ["noreply@", "no-reply@", "notifications@", "donotreply@"]
+ignore_subjects = []
+only_unread = true

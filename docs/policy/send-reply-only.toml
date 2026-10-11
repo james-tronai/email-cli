@@ -1,0 +1,23 @@
+# email policy: SEND, REPLIES ONLY. As draft, plus `email send` for a draft
+# that replies to or forwards an existing thread, to at most 5 recipients.
+# Brand-new messages, external forwards and deletes stay refused. The
+# account must also log in with --mode send.
+# (This is what the author's own deployment runs.)
+# Install: ~/.config/email/policy.toml (or $EMAIL_POLICY_FILE). Read-only to the agent.
+[default]
+mode = "send"
+signoff = "\n\n-- \nDrafted by my assistant."
+
+[send]
+allowed_recipient_domains = []   # empty: no domain restriction on send; only the mailbox's own domain is internal for forwards
+max_recipients = 5
+block_external_forward = true
+require_reply_context = true     # only replies/forwards to an existing thread, never a brand-new message
+
+[delete]
+enabled = false
+
+[watch]
+ignore_senders = ["noreply@", "no-reply@", "notifications@", "donotreply@"]
+ignore_subjects = []
+only_unread = true

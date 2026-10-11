@@ -137,3 +137,27 @@ func filtered(f policy.WatchSection, m *provider.Message) string {
 	}
 	return ""
 }
+
+// State is an account's watch state, as `email doctor` reports it.
+type State struct {
+	Provider string
+	Cursor   string
+	Notified []string
+	Pending  int
+}
+
+// ReadState reads a watch state file. A missing file is fs.ErrNotExist.
+func ReadState(path string) (*State, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var st fileState
+	if err := json.Unmarshal(b, &st); err != nil {
+		return nil, err
+	}
+	return &State{Provider: st.Provider, Cursor: st.Cursor, Notified: st.Notified, Pending: len(st.Pending)}, nil
+}

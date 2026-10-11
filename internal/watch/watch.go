@@ -58,6 +58,10 @@ type Config struct {
 	Log          *slog.Logger
 	Audit        *audit.Logger
 
+	// NoIdle polls every account, also those whose server offers IDLE (for
+	// servers that accept IDLE but never report new mail; see doctor).
+	NoIdle bool
+
 	// Zero values get the defaults below; tests shorten them.
 	IdleMax       time.Duration // renew IDLE this often (Gmail drops it at ~29 min)
 	BackoffMin    time.Duration
@@ -410,6 +414,7 @@ func (a *account) session(ctx context.Context, idleFails *int, noIdleUntil *time
 	}
 	defer src.Close()
 	idler, canIdle := src.(Idler)
+	canIdle = canIdle && !cfg.NoIdle
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()

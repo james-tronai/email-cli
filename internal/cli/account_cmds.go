@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -81,7 +82,7 @@ func (a *app) loginMSGraph(ctx context.Context, acct *auth.Account, flow string,
 		Flow:      flow,
 		Manual:    manual,
 		Stdin:     a.stdin,
-		OnPrompt:  func(p oauthflow.Prompt) error { return a.output(p) },
+		OnPrompt:  a.loginPrompt,
 		OnDeviceCode: func(info msgraph.DeviceCodeInfo) error {
 			return a.output(info)
 		},
@@ -137,7 +138,7 @@ func (a *app) loginGmail(ctx context.Context, acct *auth.Account, clientSecret, 
 		UserAgent: a.userAgent(),
 		Manual:    manual,
 		Stdin:     a.stdin,
-		OnPrompt:  func(p oauthflow.Prompt) error { return a.output(p) },
+		OnPrompt:  a.loginPrompt,
 	}
 	if !noBrowser {
 		params.OpenBrowser = oauthflow.OpenBrowser
@@ -155,7 +156,46 @@ func (a *app) loginGmail(ctx context.Context, acct *auth.Account, clientSecret, 
 
 // loginIMAP reads the password from stdin (never argv or the environment)
 // and checks it with one IMAP login.
-func (a *app) loginIMAP(ctx context.Context, acct *auth.Account, username string, servers auth.Servers, passwordStdin bool) ([]string, error) {
+// loginPrompt tells a person what to do, in plain words on stderr. Scripts
+// (stdout not a terminal, e.g. kubectl exec -i) also get the prompt as JSON
+// on stdout, as before; a terminal gets only the text.
+func (a *app) loginPrompt(p oauthflow.Prompt) error {
+	w := a.stderr
+	if p.Mode == "manual" {
+		fmt.Fprintf(w, `
+Sign in to finish the login:
+
+  1. Open this link in a browser, on any computer or phone:
+
+     %s
+
+  2. Sign in and accept. The browser then tries to open
+     %s?code=... and shows an error such as "This site can't be reached".
+     That is expected: the code is in the address.
+
+  3. Copy the whole address from the address bar and paste it here,
+     then press Enter:
+
+`, p.AuthorizeURL, p.RedirectURI)
+	} else {
+		fmt.Fprintf(w, "\nA browser window should open for the sign-in. If it does not, open this link on this computer:\n\n  %s\n\nWaiting for the sign-in to finish...\n", p.AuthorizeURL)
+	}
+	if isTerminal(a.stdout) || a.format == "text" {
+		return nil
+	}
+	return a.output(p)
+}
+
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+func (a *app) loginIMAP(ctx context.Context, acct *auth.Account, username string, servers auth.Servers, preset, host string, passwordStdin bool) ([]string, error) {
 	if username == "" {
 		return nil, errs.Usage("--username <address> is required for --provider imap")
 	}
@@ -168,15 +208,22 @@ func (a *app) loginIMAP(ctx context.Context, acct *auth.Account, username string
 	}
 	pw := strings.TrimRight(string(b), "\r\n")
 	acct.Username = strings.TrimSpace(username)
-	acct.Servers = &servers
+	given := servers != (auth.Servers{}) || preset != "" || host != ""
+	acct.Servers = nil
 	if prev, err := a.store.LoadAccount(acct.Alias); err == nil {
 		acct.CreatedAt = prev.CreatedAt
-		if servers == (auth.Servers{}) && prev.Servers != nil {
+		if !given && prev.Servers != nil {
 			acct.Servers = prev.Servers // a re-login keeps the hosts
 		}
 	}
-	host := acct.Servers.IMAPHost
-	if host == "" || strings.EqualFold(host, imap.GmailIMAPHost) {
+	if acct.Servers == nil {
+		s, err := imap.ResolveServers(acct.Username, preset, host, servers)
+		if err != nil {
+			return nil, err
+		}
+		acct.Servers = &s
+	}
+	if strings.EqualFold(acct.Servers.IMAPHost, imap.GmailIMAPHost) {
 		// Google shows app passwords in groups of four; the spaces are not part of it.
 		pw = strings.ReplaceAll(pw, " ", "")
 	}
@@ -192,6 +239,7 @@ func (a *app) authLoginCmd() *cobra.Command {
 	var prov, mode, tenant, clientID, clientSecret, clientFile, username, flow string
 	var manual, noBrowser, passwordStdin bool
 	var servers auth.Servers
+	var preset, host string
 	c := &cobra.Command{
 		Use:   "login",
 		Short: "Log in an account; scopes are requested for --mode only",
@@ -214,11 +262,13 @@ gmail needs a GCP OAuth client of type Desktop app: --client-file, or
 re-login needs neither. See docs/google-workspace-setup.md.
 
 imap logs in with a password (for personal Gmail: an app password), read
-from stdin only: --username <address> --password-stdin. A gmail.com address
-gets Gmail's servers; anything else needs --imap-host (and --smtp-host to
-send). The password can do everything, so --mode is kept by the policy file
-and this client, which never connects to SMTP below send mode. See
-docs/gmail-personal-setup.md.`,
+from stdin only: --username <address> --password-stdin. --preset picks the
+servers (gmail, icloud, fastmail, aliyun, qq, 163; mailu with --host
+<server>); gmail.com, icloud.com, fastmail.com, qq.com and 163.com addresses
+get theirs without it. Any other server: --host, or --imap-host (and
+--smtp-host to send). The password can do everything, so --mode is kept by
+the policy file and this client, which never connects to SMTP below send
+mode. See docs/imap-presets.md and docs/gmail-personal-setup.md.`,
 		Args: exactArgs(0),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if a.account == "" {
@@ -232,9 +282,9 @@ docs/gmail-personal-setup.md.`,
 				return errs.Usage("%v", err)
 			}
 			acct := &auth.Account{Alias: a.account, Provider: prov, Mode: m, TenantID: tenant, ClientID: clientID}
-			imapFlags := passwordStdin || servers != (auth.Servers{})
+			imapFlags := passwordStdin || servers != (auth.Servers{}) || preset != "" || host != ""
 			if imapFlags && prov != imap.Name {
-				return errs.Usage("--password-stdin and --imap-*/--smtp-* apply to --provider imap only")
+				return errs.Usage("--password-stdin, --preset, --host and --imap-*/--smtp-* apply to --provider imap only")
 			}
 			switch prov {
 			case fake.Name:
@@ -274,7 +324,7 @@ docs/gmail-personal-setup.md.`,
 				if cmd.Flags().Changed("flow") || tenant != "" || clientID != "" || clientSecret != "" || clientFile != "" || manual {
 					return errs.Usage("--flow, --tenant, --client-* and --manual do not apply to --provider imap")
 				}
-				warnings, err := a.loginIMAP(cmd.Context(), acct, username, servers, passwordStdin)
+				warnings, err := a.loginIMAP(cmd.Context(), acct, username, servers, preset, host, passwordStdin)
 				if err != nil {
 					return err
 				}
@@ -306,6 +356,8 @@ docs/gmail-personal-setup.md.`,
 	f.BoolVar(&noBrowser, "no-browser", false, "do not try to open a browser (loopback flow)")
 	f.StringVar(&username, "username", "", "imap, fake: mailbox address (imap: also the login name)")
 	f.BoolVar(&passwordStdin, "password-stdin", false, "imap: read the (app) password from stdin")
+	f.StringVar(&preset, "preset", "", "imap: server preset: "+strings.Join(imap.PresetNames(), "|")+" (default: from the address's domain; see docs/imap-presets.md)")
+	f.StringVar(&host, "host", "", "imap: your own mail server for IMAP and SMTP (with --preset mailu, or alone for ports 993/465)")
 	f.StringVar(&servers.IMAPHost, "imap-host", "", "imap: IMAP server (default imap.gmail.com for gmail.com addresses)")
 	f.IntVar(&servers.IMAPPort, "imap-port", 0, "imap: IMAP port (default 993; implicit TLS, except STARTTLS on 143)")
 	f.StringVar(&servers.SMTPHost, "smtp-host", "", "imap: SMTP server for send (default smtp.gmail.com for gmail.com addresses)")
