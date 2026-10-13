@@ -94,7 +94,7 @@ homebrew_casks:
     repository:
       owner: james-tronai
       name: homebrew-tap
-      token: '{{ envOrDefault "HOMEBREW_TAP_GITHUB_TOKEN" "" }}'
+      token: '{{ index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}'
     # An unset secret reaches the workflow as an empty variable.
     skip_upload: '{{ if index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}auto{{ else }}true{{ end }}'
     commit_msg_template: "email {{ .Tag }}"
