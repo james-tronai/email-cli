@@ -221,7 +221,9 @@ func (a *app) hermesConfigCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&o.RouteName, "route", hermes.DefaultRouteName, "webhook route name (watch posts to /webhooks/<route>)")
-	c.Flags().StringVar(&o.CronJob, "cron-job", "", "cron job the route runs (default: email-triage)")
+	c.Flags().StringVar(&o.CronJob, "cron-name", "", "cron job the route runs (default: email-triage)")
+	c.Flags().StringVar(&o.CronJob, "cron-job", "", "old name of --cron-name")
+	_ = c.Flags().MarkHidden("cron-job")
 	c.Flags().IntVar(&o.Port, "port", hermes.DefaultWebhookPort, "Hermes webhook port")
 	return c
 }
@@ -375,7 +377,7 @@ Running it again updates everything in place. Log in first
 			rep.HermesConfig = hermes.ConfigSnippet(hermes.ConfigOptions{CronJob: job.Name})
 			rep.NextSteps = append(rep.NextSteps,
 				"merge the config snippet into "+filepath.Join(h, "config.yaml")+", then restart Hermes",
-				"check: email doctor --notify-url "+notifyURL+", then send yourself a mail; Hermes should message you within 60 to 90 seconds")
+				"check: email doctor --notify-url "+notifyURL+", then send a mail from another address and leave it unread; Hermes should message you within 60 to 90 seconds")
 			if a.format == "text" || (!cmd.Flags().Changed("format") && a.jq == "" && isTerminal(a.stdout)) {
 				return writeInstallText(a.stdout, rep)
 			}

@@ -259,7 +259,7 @@ func TestErrorsAndRetries(t *testing.T) {
 	}
 	_, err = p.Get(ctx, "18f0ffffffffffff", provider.GetOptions{})
 	var e *errs.Error
-	if errs.ExitCode(err) != errs.ExitProvider || !isNotFound(err) || !errors.As(err, &e) || e.ProviderCode != "notFound" {
+	if errs.ExitCode(err) != errs.ExitProvider || !isNotFound(err) || !errors.As(err, &e) || e.ProviderCode != "notFound" || e.Code != "not_found" {
 		t.Fatalf("404: %v", err)
 	}
 }

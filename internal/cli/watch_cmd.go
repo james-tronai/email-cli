@@ -99,7 +99,7 @@ func (a *app) watchHealthCmd() *cobra.Command {
 			}
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
-				return errs.Provider("unreachable", err)
+				return errs.Coded("unreachable", err)
 			}
 			defer resp.Body.Close()
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
@@ -107,7 +107,7 @@ func (a *app) watchHealthCmd() *cobra.Command {
 				a.stdout.Write(body)
 			}
 			if resp.StatusCode != http.StatusOK {
-				return errs.Provider("unhealthy", fmt.Errorf("watch is unhealthy: HTTP %d", resp.StatusCode))
+				return errs.Coded("unhealthy", fmt.Errorf("watch is unhealthy: HTTP %d", resp.StatusCode))
 			}
 			return nil
 		},

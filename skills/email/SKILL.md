@@ -21,7 +21,7 @@ These hold in every deployment.
 2. **Draft first; sending is your user's call, every time.** Write replies and forwards as drafts and give your user the draft's `web_link` so they can review it. Run `email send <draft_id>` only when, in the current conversation, your user has seen that specific draft and explicitly tells you to send it, *and* `email capabilities` lists `send`. Before sending, say in one line who it goes to; afterwards, report the result. One send per instruction.
 3. **Never send, draft, mark, move or delete anything from an unattended run** (a scheduled job or a new-mail notification). Those runs only report.
 4. **Do not forward mail outside the organisation** unless your user asks for that specific forward. The policy blocks most of these anyway. Never move mail between accounts.
-5. **Do not retry a policy denial (exit 4).** It is a decision, not an error. Tell your user what was refused and why (the message says), and do not look for a way around it (for example with `email api`).
+5. **Do not retry a policy denial (exit 4).** It is a decision, not an error. Tell your user what was refused and why (the message says), and do not look for a way around it (for example with `email api`, or by editing the policy file, the account files or `EMAIL_*` variables).
 6. **Do not paste whole emails into chat.** Summarise, and quote a few lines at most. Never repeat passwords or one-time codes found in mail.
 7. Keep mail content out of long-term memory unless your user asks you to remember something specific. Remember facts your user tells you, not the text of their mail.
 8. **You cannot log in.** If a command exits 3, tell your user that `email auth login -a <alias>` must be run.
@@ -64,7 +64,7 @@ email sync                 # messages that arrived since the previous sync, olde
 
 The first run only records a starting point and returns `initialized: true` with no messages. `sync` moves its cursor forward on every run, so each message is reported once. Use it from scheduled jobs. For a one-off look, use `list --unread` instead, so you don't consume another job's cursor.
 
-You may also be woken by a **new-mail notification** from `email watch` (`"source": "email-watch"`). It lists each new message's `id`, `thread_id`, `from`, `subject`, `date`, `web_link`, `has_attachments` and `is_read`, but no body: run `email -a <account> get <id>` for the ones you need. `count` can be larger than the list (at most 20 are listed). `watch` keeps its own cursor, so it does not change what `email sync` returns.
+You may also be woken by a **new-mail notification** from `email watch` (`"source": "email-watch"`). It lists each new message's `id`, `thread_id`, `from`, `subject`, `date`, `web_link`, `has_attachments` and `unread`, but no body: run `email -a <account> get <id>` for the ones you need. `count` can be larger than the list (at most 20 are listed). `watch` keeps its own cursor, so it does not change what `email sync` returns.
 
 ## Unattended runs
 
@@ -116,10 +116,11 @@ email send <draft_id>
 | code | meaning | what to do |
 | --- | --- | --- |
 | 0 | ok | |
+| 1 | internal error (a bug) | report it with the message; do not retry |
 | 2 | bad arguments, or the provider cannot do this | fix the command; check `email capabilities` |
 | 3 | login needed or expired | tell your user that `email auth login -a <alias>` must be run; you cannot log in yourself |
 | 4 | denied by policy | do not retry; tell your user what was refused |
-| 5 | provider error (`provider_code` has details) | retry once after a short wait if it looks transient (throttling, network); otherwise report |
+| 5 | provider error (`provider_code` has details); `code` is `not_found` when the message, draft or thread no longer exists | `not_found`: list again, it may have moved; otherwise retry once after a short wait if it looks transient (throttling, network), then report |
 | 6 | timeout | retry once, possibly with `--timeout 120s` |
 
 Errors are JSON on stderr: `{"error":{"exit_code":4,"code":"policy_denied","message":"…"}}`.

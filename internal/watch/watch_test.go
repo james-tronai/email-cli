@@ -349,7 +349,7 @@ func TestPayloadShape(t *testing.T) {
 		t.Fatalf("top keys %v", keys(got))
 	}
 	m0 := got["messages"].([]any)[0].(map[string]any)
-	if strings.Join(keys(m0), ",") != "date,from,has_attachments,id,is_read,subject,thread_id,web_link" {
+	if strings.Join(keys(m0), ",") != "date,from,has_attachments,id,subject,thread_id,unread,web_link" {
 		t.Fatalf("message keys %v", keys(m0))
 	}
 	if m0["date"] != "2026-10-09T15:22:49Z" || m0["from"].(map[string]any)["email"] != "a@example.com" {

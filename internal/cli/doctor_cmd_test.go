@@ -55,7 +55,7 @@ func TestDoctorPassesOnAFreshInstall(t *testing.T) {
 	if c := find(r, "policy", ""); c.Status != checkOK || !strings.Contains(c.Detail, "mode draft") {
 		t.Fatalf("policy %+v", c)
 	}
-	if c := find(r, "watch state", "demo"); c.Status != checkSkip {
+	if c := find(r, "watch_state", "demo"); c.Status != checkSkip {
 		t.Fatalf("watch state %+v", c)
 	}
 	if c := find(r, "webhook", ""); c.Status != checkOK || gets.Load() != 1 || posts.Load() != 0 {
@@ -97,7 +97,7 @@ func TestDoctorReadsWatchState(t *testing.T) {
 	_ = os.MkdirAll(dir, 0o700)
 	_ = os.WriteFile(filepath.Join(dir, "demo.json"), []byte(`{"version":1,"provider":"fake","cursor":"3","notified":["a","b"],"pending":[{"id":"c","queued_at":"2026-10-10T00:00:00Z"}]}`), 0o600)
 	r := parseDoctor(t, e.ok("doctor", "--no-update-check", "--state-dir", dir))
-	if c := find(r, "watch state", "demo"); c.Status != checkOK || !strings.Contains(c.Detail, "2 notified, 1 waiting") {
+	if c := find(r, "watch_state", "demo"); c.Status != checkOK || !strings.Contains(c.Detail, "2 notified, 1 waiting") {
 		t.Fatalf("%+v", c)
 	}
 }

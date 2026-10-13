@@ -46,7 +46,7 @@ func (p *Provider) Send(ctx context.Context, id string) (*provider.SendResult, e
 		return nil, err
 	}
 	if len(fs) == 0 {
-		return nil, errs.Provider("notFound", fmt.Errorf("draft %s not found", id))
+		return nil, errs.NotFound("notFound", fmt.Errorf("draft %s not found", id))
 	}
 	draft := fs[0]
 	threadID := p.convert(ctx, draft).ThreadID

@@ -26,7 +26,7 @@ type Item struct {
 	Date           time.Time        `json:"date"`
 	WebLink        string           `json:"web_link,omitempty"`
 	HasAttachments bool             `json:"has_attachments"`
-	IsRead         bool             `json:"is_read"`
+	Unread         bool             `json:"unread"`
 }
 
 func itemOf(m *provider.Message) Item {
@@ -38,7 +38,7 @@ func itemOf(m *provider.Message) Item {
 		Date:           m.Date.UTC(),
 		WebLink:        m.WebLink,
 		HasAttachments: m.Flags.HasAttachments,
-		IsRead:         !m.Flags.Unread,
+		Unread:         m.Flags.Unread,
 	}
 }
 

@@ -192,7 +192,7 @@ func TestSendInProgressBlocksSameKey(t *testing.T) {
 	}
 	_, err := s.Send(ctx, id, "")
 	var e *errs.Error
-	if !errors.As(err, &e) || e.ProviderCode != "sendInProgress" || len(sf.sent) != 0 {
+	if !errors.As(err, &e) || e.Code != "send_in_progress" || len(sf.sent) != 0 {
 		t.Fatalf("pending key: %v", err)
 	}
 }

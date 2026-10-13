@@ -393,3 +393,11 @@ func TestWatchDryRunEndToEnd(t *testing.T) {
 		t.Fatal("watch touched the sync state")
 	}
 }
+
+func TestUnknownSubcommand(t *testing.T) {
+	e := newEnv(t, draftPolicy)
+	e.code(2, "accounts", "bogus")
+	e.code(2, "draft", "lst")
+	e.code(2, "bogus")
+	e.code(0, "accounts")
+}

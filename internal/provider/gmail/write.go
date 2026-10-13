@@ -39,7 +39,7 @@ func (p *Provider) reread(ctx context.Context, id string) (*provider.Message, er
 		return nil, err
 	}
 	if len(ms) == 0 {
-		return nil, errs.Provider("notFound", fmt.Errorf("message %s not found", id))
+		return nil, errs.NotFound("notFound", fmt.Errorf("message %s not found", id))
 	}
 	return &ms[0], nil
 }

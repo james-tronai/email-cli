@@ -202,7 +202,7 @@ type threadIn struct {
 
 type messageIn struct {
 	acctArg
-	MessageID string `json:"message_id" jsonschema:"message id"`
+	ID string `json:"id" jsonschema:"message id"`
 }
 
 type draftCreateIn struct {
@@ -343,11 +343,11 @@ func (a *app) mcpServer(log *slog.Logger) *mcp.Server {
 	addTool(a, log, srv, &mcp.Tool{Name: "attachments_list", Annotations: readOnly,
 		Description: "Read-only. Names, sizes and types of a message's attachments. Attachment contents are not available over MCP."},
 		func(ctx context.Context, in messageIn) (string, any, error) {
-			if err := needID("message_id", in.MessageID); err != nil {
+			if err := needID("id", in.ID); err != nil {
 				return "", nil, err
 			}
 			return withService(a, ctx, in.Account, func(s *service.Service) (any, error) {
-				as, err := s.ListAttachments(ctx, in.MessageID)
+				as, err := s.ListAttachments(ctx, in.ID)
 				if as == nil && err == nil {
 					as = []provider.AttachmentMeta{}
 				}

@@ -89,14 +89,14 @@ func (s *Service) lookupIdem(key string, now time.Time) (*SendOutput, error) {
 		out.Replayed = true
 		return &out, nil
 	case r.State == "pending" && now.Sub(r.Created) < pendingTimeout:
-		return nil, errs.Provider("sendInProgress", fmt.Errorf("a send with idempotency key %q started at %s and has not finished; retry after %s",
+		return nil, errs.Coded("send_in_progress", fmt.Errorf("a send with idempotency key %q started at %s and has not finished; retry after %s",
 			key, r.Created.Format(time.RFC3339), r.Created.Add(pendingTimeout).Format(time.RFC3339)))
 	}
 	return nil, nil
 }
 
 // claimIdem writes the pending record. O_EXCL makes two concurrent sends
-// with the same key race for one file; the loser gets sendInProgress.
+// with the same key race for one file; the loser gets send_in_progress.
 func (s *Service) claimIdem(key string, now time.Time) error {
 	if err := os.MkdirAll(s.idemDir(), 0o700); err != nil {
 		return err
@@ -105,7 +105,7 @@ func (s *Service) claimIdem(key string, now time.Time) error {
 	if r, _ := readIdem(path); r != nil {
 		if out, err := s.lookupIdem(key, now); err != nil || out != nil {
 			if err == nil {
-				err = errs.Provider("sendInProgress", fmt.Errorf("idempotency key %q was used by a send that just finished", key))
+				err = errs.Coded("send_in_progress", fmt.Errorf("idempotency key %q was used by a send that just finished", key))
 			}
 			return err
 		}
@@ -113,7 +113,7 @@ func (s *Service) claimIdem(key string, now time.Time) error {
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, fs.ErrExist) {
-		return errs.Provider("sendInProgress", fmt.Errorf("a send with idempotency key %q is in progress", key))
+		return errs.Coded("send_in_progress", fmt.Errorf("a send with idempotency key %q is in progress", key))
 	}
 	if err != nil {
 		return err

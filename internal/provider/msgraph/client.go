@@ -200,7 +200,11 @@ func (c *client) graphError(method, target string, r *response) error {
 		e.ProviderCode = code
 		return e
 	}
-	return errs.Provider(code, fmt.Errorf("Graph %s %s: HTTP %d %s: %s (request-id %s)", method, redactURL(target), r.Status, code, msg, r.RequestID))
+	err := fmt.Errorf("Graph %s %s: HTTP %d %s: %s (request-id %s)", method, redactURL(target), r.Status, code, msg, r.RequestID)
+	if r.Status == http.StatusNotFound {
+		return errs.NotFound(code, err)
+	}
+	return errs.Provider(code, err)
 }
 
 // redactURL drops query strings (they can carry skip/delta tokens).

@@ -419,7 +419,7 @@ func (p *Provider) GetAttachment(ctx context.Context, id, partID string) (*provi
 	}
 	part := findPart(g.Payload, partID)
 	if part == nil || !isAttachment(part) {
-		return nil, errs.Provider("notFound", fmt.Errorf("attachment %s not found on %s", partID, id))
+		return nil, errs.NotFound("notFound", fmt.Errorf("attachment %s not found on %s", partID, id))
 	}
 	data, err := p.partData(ctx, g.ID, part)
 	if err != nil {

@@ -385,7 +385,7 @@ func (p *Provider) Thread(ctx context.Context, threadID string, limit int) ([]pr
 		}
 	}
 	if len(out) == 0 {
-		return nil, errs.Provider("notFound", fmt.Errorf("thread %s not found", threadID))
+		return nil, errs.NotFound("notFound", fmt.Errorf("thread %s not found", threadID))
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Date.Before(out[j].Date) })
 	if len(out) > maxThreadMessages {
@@ -428,7 +428,7 @@ func (p *Provider) GetAttachment(ctx context.Context, id, partID string) (*provi
 	}
 	pt := pm.Find(partID)
 	if pt == nil || !pt.IsAttachment() {
-		return nil, errs.Provider("notFound", fmt.Errorf("attachment %s not found on %s", partID, id))
+		return nil, errs.NotFound("notFound", fmt.Errorf("attachment %s not found on %s", partID, id))
 	}
 	return &provider.Attachment{
 		AttachmentMeta: provider.AttachmentMeta{ID: pt.Path, Name: pt.Name(), Size: int64(len(pt.Data)), MIME: pt.MediaType, Inline: pt.IsInline()},

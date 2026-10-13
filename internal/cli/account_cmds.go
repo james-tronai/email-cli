@@ -473,7 +473,7 @@ func (s statusList) WriteText(w io.Writer) error {
 func (a *app) authStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Show account, mode, scopes and token state",
+		Short: "Show each account's provider, login mode and effective mode under the policy",
 		Args:  exactArgs(0),
 		RunE: func(*cobra.Command, []string) error {
 			st, err := a.statuses(a.account)
@@ -605,7 +605,7 @@ func (a *app) policyCmd() *cobra.Command {
 				return err
 			}
 			return a.output(map[string]any{"source": p.Source, "default": map[string]any{"mode": p.Default.Mode, "signoff": p.Signoff()},
-				"send": p.Send, "delete": p.Delete})
+				"send": p.Send, "delete": p.Delete, "watch": p.Watch})
 		},
 	})
 	return c

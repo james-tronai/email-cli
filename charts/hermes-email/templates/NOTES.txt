@@ -8,7 +8,7 @@ Your Hermes Deployment still needs (README.md, docs/hermes.md):
   1. The ConfigMap {{ include "hermes-email.fullname" . }} mounted read-only at {{ .Values.paths.policyMount }}
      in the Hermes container, and {{ include "hermes-email.binDir" . }} on its PATH.
   2. In config.yaml, the webhook route and skills settings: run
-       kubectl exec <hermes pod> -- {{ include "hermes-email.binDir" . }}/email hermes config{{ if ne .Values.seedCron.name "email-triage" }} --cron-job {{ .Values.seedCron.name }}{{ end }}
+       kubectl exec <hermes pod> -- {{ include "hermes-email.binDir" . }}/email hermes config{{ if ne .Values.seedCron.name "email-triage" }} --cron-name {{ .Values.seedCron.name }}{{ end }}
   3. WEBHOOK_ENABLED=true and WEBHOOK_SECRET in its environment{{ if .Values.hermes.webhookSecret.name }} (watch reads {{ .Values.hermes.webhookSecret.name }}/{{ .Values.hermes.webhookSecret.key }}){{ end }}.
 {{- if not .Values.seedCron.enabled }}
   4. The triage cron job: email hermes seed-cron --hermes-home {{ .Values.hermes.home }} --deliver <platform:chat_id>
@@ -25,5 +25,5 @@ hermes.podSelector is empty: watch is not pinned to the Hermes node. A ReadWrite
 (local-path) needs both pods on one node; set hermes.podSelector or nodeSelector.
 {{- end }}
 
-Check: kubectl logs deploy/{{ include "hermes-email.fullname" . }}-watch, then send yourself a mail;
+Check: kubectl logs deploy/{{ include "hermes-email.fullname" . }}-watch, then send a mail from another address (leave it unread);
 Hermes should message you within 60 to 90 seconds.

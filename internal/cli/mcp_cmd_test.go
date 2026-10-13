@@ -129,6 +129,10 @@ func TestMCPTools(t *testing.T) {
 		t.Fatalf("list: %v", m)
 	}
 
+	if m, isErr := call(t, cs, "attachments_list", map[string]any{"id": "fake-0002"}); isErr || len(m["items"].([]any)) != 1 {
+		t.Fatalf("attachments_list: %v", m)
+	}
+
 	m, isErr := call(t, cs, "get", map[string]any{"id": id})
 	body, _ := m["body_text"].(string)
 	if isErr || !strings.HasPrefix(body, "----- BEGIN UNTRUSTED MESSAGE BODY (id="+id+")") ||

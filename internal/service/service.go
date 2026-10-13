@@ -272,7 +272,7 @@ func (s *Service) DownloadAttachments(ctx context.Context, id, attachmentID, out
 		res.Files = append(res.Files, DownloadedFile{ID: m.ID, Name: m.Name, Path: path, Size: int64(len(a.Data)), MIME: m.MIME})
 	}
 	if attachmentID != "" && len(res.Files) == 0 {
-		return nil, errs.Provider("notFound", fmt.Errorf("attachment %s not found on %s", attachmentID, id))
+		return nil, errs.NotFound("notFound", fmt.Errorf("attachment %s not found on %s", attachmentID, id))
 	}
 	return res, nil
 }

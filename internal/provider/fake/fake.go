@@ -144,7 +144,7 @@ func snippet(s string) string {
 }
 
 func notFound(id string) error {
-	return errs.Provider("notFound", fmt.Errorf("message %s not found", id))
+	return errs.NotFound("notFound", fmt.Errorf("message %s not found", id))
 }
 
 func (p *Provider) get(id string) (*storedMessage, error) {
@@ -244,7 +244,7 @@ func (p *Provider) Thread(_ context.Context, threadID string, limit int) ([]prov
 	defer p.mu.Unlock()
 	sms := p.sortedMessages(func(sm *storedMessage) bool { return sm.Msg.ThreadID == threadID })
 	if len(sms) == 0 {
-		return nil, errs.Provider("notFound", fmt.Errorf("thread %s not found", threadID))
+		return nil, errs.NotFound("notFound", fmt.Errorf("thread %s not found", threadID))
 	}
 	slices.Reverse(sms) // oldest first
 	if limit > 0 && len(sms) > limit {
@@ -277,7 +277,7 @@ func (p *Provider) GetAttachment(_ context.Context, id, aid string) (*provider.A
 	}
 	a, ok := sm.Attachments[aid]
 	if !ok {
-		return nil, errs.Provider("notFound", fmt.Errorf("attachment %s not found on %s", aid, id))
+		return nil, errs.NotFound("notFound", fmt.Errorf("attachment %s not found on %s", aid, id))
 	}
 	a.Data = sm.AttachData[aid]
 	return &a, nil

@@ -188,7 +188,7 @@ func TestErrorMapping(t *testing.T) {
 
 	_, err := p.Get(ctx, "missing", provider.GetOptions{})
 	e := errs.From(err)
-	if e.Exit != errs.ExitProvider || e.ProviderCode != "ErrorItemNotFound" || !strings.Contains(e.Message, "request-id req-GET-test") {
+	if e.Exit != errs.ExitProvider || e.ProviderCode != "ErrorItemNotFound" || e.Code != "not_found" || !strings.Contains(e.Message, "request-id req-GET-test") {
 		t.Fatalf("404: %+v", e)
 	}
 	_, err = p.Get(ctx, "expired", provider.GetOptions{})

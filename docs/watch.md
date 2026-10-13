@@ -40,7 +40,7 @@ X-Gitlab-Token: <value of $EMAIL_WATCH_NOTIFY_TOKEN>
 
 {"source":"email-watch","account":"work","count":2,
  "messages":[{"id":"…","thread_id":"…","from":{"name":"…","email":"…"},"subject":"…",
-              "date":"2026-10-09T15:22:49Z","web_link":"…","has_attachments":false,"is_read":false}]}
+              "date":"2026-10-09T15:22:49Z","web_link":"…","has_attachments":false,"unread":true}]}
 ```
 
 - **Contents**: metadata only, with no body or snippet. The agent runs `email -a <account> get <id>` for what it needs.

@@ -187,7 +187,7 @@ func (p *Provider) Thread(ctx context.Context, threadID string, limit int) ([]pr
 		next = gp.NextLink
 	}
 	if len(out) == 0 {
-		return nil, errs.Provider("ErrorItemNotFound", fmt.Errorf("thread %s not found", threadID))
+		return nil, errs.NotFound("ErrorItemNotFound", fmt.Errorf("thread %s not found", threadID))
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Date.Before(out[j].Date) })
 	if limit > 0 && len(out) > limit {

@@ -235,11 +235,11 @@ func (a *app) doctorAccount(ctx context.Context, rep *doctorReport, pol *policy.
 func (a *app) doctorIMAP(ctx context.Context, rep *doctorReport, p *imap.Provider, alias, addr string, wait time.Duration) {
 	info, err := p.ServerInfo(ctx)
 	if err != nil {
-		rep.add(check{Name: "imap server", Account: alias, Status: checkFail, Detail: errs.From(err).Message})
+		rep.add(check{Name: "imap_server", Account: alias, Status: checkFail, Detail: errs.From(err).Message})
 		return
 	}
 	d := fmt.Sprintf("IDLE %v, CONDSTORE %v, Gmail extensions %v", info.Idle, info.CondStore, info.Gmail)
-	st := check{Name: "imap server", Account: alias, Status: checkOK, Detail: d}
+	st := check{Name: "imap_server", Account: alias, Status: checkOK, Detail: d}
 	if !info.Idle {
 		st.Status, st.Detail = checkWarn, d+"; watch will poll every --poll-interval"
 	}
@@ -248,37 +248,37 @@ func (a *app) doctorIMAP(ctx context.Context, rep *doctorReport, p *imap.Provide
 		return
 	}
 	if wait <= 0 {
-		rep.add(check{Name: "idle push", Account: alias, Status: checkSkip,
+		rep.add(check{Name: "idle_push", Account: alias, Status: checkSkip,
 			Detail: "not tested; run `email doctor -a " + alias + " --idle-test 60s` and send yourself a message while it waits"})
 		return
 	}
 	before, err := p.InboxUIDNext(ctx)
 	if err != nil {
-		rep.add(check{Name: "idle push", Account: alias, Status: checkFail, Detail: errs.From(err).Message})
+		rep.add(check{Name: "idle_push", Account: alias, Status: checkFail, Detail: errs.From(err).Message})
 		return
 	}
 	fmt.Fprintf(a.stderr, "doctor: waiting up to %s in IDLE on %s's INBOX: send a message to %s now\n", wait, alias, addr)
 	woke, err := p.Idle(ctx, wait)
 	if err != nil {
-		rep.add(check{Name: "idle push", Account: alias, Status: checkFail, Detail: "IDLE failed: " + errs.From(err).Message,
+		rep.add(check{Name: "idle_push", Account: alias, Status: checkFail, Detail: "IDLE failed: " + errs.From(err).Message,
 			Fix: "run watch with --no-idle"})
 		return
 	}
 	if woke {
-		rep.add(check{Name: "idle push", Account: alias, Status: checkOK, Detail: "the server reported the new message during IDLE"})
+		rep.add(check{Name: "idle_push", Account: alias, Status: checkOK, Detail: "the server reported the new message during IDLE"})
 		return
 	}
 	// Did mail arrive that IDLE did not report?
 	after, err := p.InboxUIDNext(ctx)
 	switch {
 	case err != nil:
-		rep.add(check{Name: "idle push", Account: alias, Status: checkWarn, Detail: "no push seen; could not recheck: " + errs.From(err).Message})
+		rep.add(check{Name: "idle_push", Account: alias, Status: checkWarn, Detail: "no push seen; could not recheck: " + errs.From(err).Message})
 	case after > before:
-		rep.add(check{Name: "idle push", Account: alias, Status: checkFail,
+		rep.add(check{Name: "idle_push", Account: alias, Status: checkFail,
 			Detail: "a message arrived but the server did not report it during IDLE",
 			Fix:    "run watch with --no-idle (polls every --poll-interval)"})
 	default:
-		rep.add(check{Name: "idle push", Account: alias, Status: checkSkip, Detail: "no message arrived during the test; send one and run it again"})
+		rep.add(check{Name: "idle_push", Account: alias, Status: checkSkip, Detail: "no message arrived during the test; send one and run it again"})
 	}
 }
 
@@ -287,16 +287,16 @@ func watchStateCheck(dir, alias string) check {
 	st, err := watch.ReadState(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return check{Name: "watch state", Account: alias, Status: checkSkip, Detail: "no " + path + " (watch has not run for this account)"}
+		return check{Name: "watch_state", Account: alias, Status: checkSkip, Detail: "no " + path + " (watch has not run for this account)"}
 	case err != nil:
-		return check{Name: "watch state", Account: alias, Status: checkWarn, Detail: path + ": " + err.Error(),
+		return check{Name: "watch_state", Account: alias, Status: checkWarn, Detail: path + ": " + err.Error(),
 			Fix: "watch starts from a new baseline when it cannot read the file"}
 	}
 	d := fmt.Sprintf("%s: provider %s, %d notified, %d waiting for the debounce window", path, st.Provider, len(st.Notified), st.Pending)
 	if st.Cursor == "" {
 		d += ", no cursor yet"
 	}
-	return check{Name: "watch state", Account: alias, Status: checkOK, Detail: d}
+	return check{Name: "watch_state", Account: alias, Status: checkOK, Detail: d}
 }
 
 // probeWebhook only GETs the URL: a POST would wake the agent.

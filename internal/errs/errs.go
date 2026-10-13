@@ -9,6 +9,10 @@
 //	4 denied by policy
 //	5 provider error (carries the provider's own error code)
 //	6 timeout
+//
+// The code strings are part of the contract too: usage, unsupported,
+// auth_required, policy_denied, not_found, send_in_progress, provider_error,
+// unreachable, unhealthy, timeout, internal.
 package errs
 
 import (
@@ -69,6 +73,18 @@ func Policy(format string, args ...any) *Error {
 // error code (e.g. Graph "ErrorItemNotFound", Gmail "notFound").
 func Provider(providerCode string, err error) *Error {
 	return &Error{Exit: ExitProvider, Code: "provider_error", Message: err.Error(), ProviderCode: providerCode, Err: err}
+}
+
+// NotFound is a provider error for a message, draft, thread or attachment
+// that does not exist (any more). providerCode keeps the upstream code.
+func NotFound(providerCode string, err error) *Error {
+	return &Error{Exit: ExitProvider, Code: "not_found", Message: err.Error(), ProviderCode: providerCode, Err: err}
+}
+
+// Coded is an error with exit code 5 and a code of its own, for failures
+// that are not the provider's (a send already in progress, watch down).
+func Coded(code string, err error) *Error {
+	return &Error{Exit: ExitProvider, Code: code, Message: err.Error(), Err: err}
 }
 
 func Timeout(err error) *Error {

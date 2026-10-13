@@ -205,8 +205,11 @@ func (c *client) apiError(method, target string, r *response) error {
 		e.ProviderCode = code
 		return e
 	}
-	e := errs.Provider(code, fmt.Errorf("Gmail %s %s: HTTP %d %s: %s", method, redactURL(target), r.Status, code, msg))
-	return e
+	err := fmt.Errorf("Gmail %s %s: HTTP %d %s: %s", method, redactURL(target), r.Status, code, msg)
+	if r.Status == http.StatusNotFound {
+		return errs.NotFound(code, err)
+	}
+	return errs.Provider(code, err)
 }
 
 // isNotFound reports a 404 from the API.
@@ -215,7 +218,7 @@ func isNotFound(err error) bool {
 	if !errors.As(err, &e) {
 		return false
 	}
-	return e.ProviderCode == "notFound" || e.ProviderCode == "NOT_FOUND" || e.ProviderCode == "404"
+	return e.Code == "not_found"
 }
 
 // redactURL drops query strings (they can carry page tokens and queries).

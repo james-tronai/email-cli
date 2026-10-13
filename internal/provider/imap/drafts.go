@@ -52,7 +52,7 @@ func (p *Provider) appendDraft(ctx context.Context, msg []byte, messageID string
 		return nil, fmt.Errorf("the draft was saved but reading it back failed: %w", err)
 	}
 	if len(fs) == 0 {
-		return nil, errs.Provider("notFound", errors.New("the draft was saved but is not in the Drafts mailbox"))
+		return nil, errs.NotFound("notFound", errors.New("the draft was saved but is not in the Drafts mailbox"))
 	}
 	return fs[0], nil
 }
@@ -86,7 +86,7 @@ func (p *Provider) appendTo(ctx context.Context, box, flags string, msg []byte, 
 		return 0, err
 	}
 	if len(uids) == 0 {
-		return 0, errs.Provider("notFound", fmt.Errorf("the appended message %s is not in %q", messageID, box))
+		return 0, errs.NotFound("notFound", fmt.Errorf("the appended message %s is not in %q", messageID, box))
 	}
 	return uids[len(uids)-1], nil
 }
@@ -270,7 +270,7 @@ func (p *Provider) UpdateDraft(ctx context.Context, id string, u provider.DraftU
 		return nil, err
 	}
 	if len(fs) == 0 {
-		return nil, errs.Provider("notFound", fmt.Errorf("draft %s not found", id))
+		return nil, errs.NotFound("notFound", fmt.Errorf("draft %s not found", id))
 	}
 	cur := p.convert(ctx, fs[0])
 	pm := mailmime.Parse(fs[0].raw)

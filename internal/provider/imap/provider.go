@@ -403,7 +403,7 @@ func (p *Provider) locate(ctx context.Context, id string) (location, error) {
 			return location{}, err
 		}
 		if c.uidValidity != validity {
-			return location{}, errs.Provider("notFound", fmt.Errorf("message %s not found: mailbox %q was rebuilt on the server (UIDVALIDITY changed); list it again", id, box))
+			return location{}, errs.NotFound("notFound", fmt.Errorf("message %s not found: mailbox %q was rebuilt on the server (UIDVALIDITY changed); list it again", id, box))
 		}
 		return location{box: box, uid: uid}, nil
 	}
@@ -432,7 +432,7 @@ func (p *Provider) locate(ctx context.Context, id string) (location, error) {
 			return l, nil
 		}
 	}
-	return location{}, errs.Provider("notFound", fmt.Errorf("message %s not found", id))
+	return location{}, errs.NotFound("notFound", fmt.Errorf("message %s not found", id))
 }
 
 func (p *Provider) forget(id string) { delete(p.loc, id) }
@@ -598,7 +598,7 @@ func (p *Provider) fetchOne(ctx context.Context, id string, full bool) (*fetched
 	}
 	if len(fs) == 0 {
 		p.forget(id)
-		return nil, errs.Provider("notFound", fmt.Errorf("message %s not found", id))
+		return nil, errs.NotFound("notFound", fmt.Errorf("message %s not found", id))
 	}
 	return fs[0], nil
 }
