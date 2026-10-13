@@ -14,10 +14,10 @@ Everything comes from the image of the same release, so the skill, script and bi
 ## Install
 
 ```sh
-helm install alice-email oci://ghcr.io/james-tronai/charts/hermes-email --version 0.9.0 -n hermes -f values.yaml
+helm install alice-email oci://ghcr.io/james-tronai/charts/hermes-email --version 0.10.0 -n hermes -f values.yaml
 ```
 
-Or, with Argo CD, use the Git repository: `repoURL: https://github.com/james-tronai/email-cli.git`, `path: charts/hermes-email`, `targetRevision: v0.9.0`.
+Or, with Argo CD, use the Git repository: `repoURL: https://github.com/james-tronai/email-cli.git`, `path: charts/hermes-email`, `targetRevision: v0.10.0`.
 
 [examples/values.yaml](examples/values.yaml) is a complete example. The required values are:
 - `hermes.pvc`: the PVC that holds HERMES_HOME;
