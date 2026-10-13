@@ -6,13 +6,13 @@
 # Script: picks your platform, checks checksums.txt, puts email in ~/.local/bin
 # (/usr/local/bin as root). Rerunning with the same version changes nothing.
 curl -fsSL https://github.com/james-tronai/email-cli/releases/latest/download/install.sh | sh
-curl -fsSL https://github.com/james-tronai/email-cli/releases/latest/download/install.sh | sh -s -- --version v0.10.2 --dest /usr/local/bin   # a fixed version
+curl -fsSL https://github.com/james-tronai/email-cli/releases/latest/download/install.sh | sh -s -- --version v1.0.0 --dest /usr/local/bin   # a fixed version
 
 # Homebrew (macOS, Linux)
 brew install james-tronai/tap/email
 
 # Container (linux/amd64, linux/arm64; FROM scratch, entrypoint `email`)
-docker run --rm -v email-data:/data ghcr.io/james-tronai/email-cli:latest version   # or a release tag, e.g. :v0.10.2
+docker run --rm -v email-data:/data ghcr.io/james-tronai/email-cli:latest version   # or a release tag, e.g. :v1.0.0
 
 # From source (Go 1.27+)
 go install github.com/james-tronai/email-cli/cmd/email@latest

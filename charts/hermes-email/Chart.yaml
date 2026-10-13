@@ -3,8 +3,8 @@ name: hermes-email
 description: email watch for a Hermes agent (new mail wakes the agent), plus the email skill, route script, policy and triage cron job on the agent's volume
 type: application
 # version and appVersion follow the email-cli release; the release workflow checks that they match the tag.
-version: 0.10.2
-appVersion: v0.10.2
+version: 1.0.0
+appVersion: v1.0.0
 home: https://github.com/james-tronai/email-cli
 sources:
   - https://github.com/james-tronai/email-cli/tree/main/charts/hermes-email
