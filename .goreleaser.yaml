@@ -94,7 +94,9 @@ homebrew_casks:
     repository:
       owner: james-tronai
       name: homebrew-tap
-      token: '{{ index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}'
+      # GoReleaser accepts exactly {{ .Env.NAME }} here (tmpl.ApplySingleEnvOnly);
+      # the workflow always defines the variable, empty when the secret is unset.
+      token: '{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}'
     # An unset secret reaches the workflow as an empty variable.
     skip_upload: '{{ if index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}auto{{ else }}true{{ end }}'
     commit_msg_template: "email {{ .Tag }}"
