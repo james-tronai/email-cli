@@ -32,7 +32,7 @@ func TestHermesInstallSingleHost(t *testing.T) {
 	if st, _ := os.Stat(rep.TokenFile); string(tok) != "EMAIL_WATCH_NOTIFY_TOKEN=s3cret\n" || st.Mode().Perm() != 0o600 {
 		t.Fatalf("token file %q", tok)
 	}
-	if got, err := readTokenFile(rep.TokenFile, "EMAIL_WATCH_NOTIFY_TOKEN"); err != nil || got != "s3cret" {
+	if got, err := readTokenFile("notify-token-file", rep.TokenFile, "EMAIL_WATCH_NOTIFY_TOKEN"); err != nil || got != "s3cret" {
 		t.Fatalf("readTokenFile %q %v", got, err)
 	}
 	pol, _ := os.ReadFile(rep.Policy.Path)
@@ -62,13 +62,13 @@ func TestReadTokenFile(t *testing.T) {
 	} {
 		p := filepath.Join(dir, "f")
 		os.WriteFile(p, []byte(body), 0o600)
-		if got, err := readTokenFile(p, "EMAIL_WATCH_NOTIFY_TOKEN"); err != nil || got != want {
+		if got, err := readTokenFile("notify-token-file", p, "EMAIL_WATCH_NOTIFY_TOKEN"); err != nil || got != want {
 			t.Errorf("%q: %q %v", body, got, err)
 		}
 	}
 	p := filepath.Join(dir, "g")
 	os.WriteFile(p, []byte("OTHER=1\n"), 0o600)
-	if _, err := readTokenFile(p, "EMAIL_WATCH_NOTIFY_TOKEN"); err == nil {
+	if _, err := readTokenFile("notify-token-file", p, "EMAIL_WATCH_NOTIFY_TOKEN"); err == nil {
 		t.Error("file without the key accepted")
 	}
 }

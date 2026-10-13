@@ -127,7 +127,7 @@ Exit codes: 0 ok, 2 usage, 3 auth required, 4 policy denied, 5 provider error, 6
 			if cmd.Name() == "login" && !cmd.Flags().Changed("timeout") {
 				timeout = 15 * time.Minute // device code lifetime
 			}
-			if cmd.Name() == "watch" && !cmd.Flags().Changed("timeout") {
+			if (cmd.Name() == "watch" || cmd.Name() == "mcp") && !cmd.Flags().Changed("timeout") {
 				timeout = 0 // runs until stopped
 			}
 			if timeout > 0 {
@@ -169,6 +169,7 @@ Exit codes: 0 ok, 2 usage, 3 auth required, 4 policy denied, 5 provider error, 6
 		a.watchCmd(),
 		a.doctorCmd(),
 		a.hermesCmd(),
+		a.mcpCmd(),
 		a.apiCmd(),
 	)
 	return root
@@ -194,24 +195,39 @@ func (a *app) loadPolicy() (*policy.Policy, error) {
 
 // open resolves the account, loads policy and opens the provider.
 func (a *app) open(ctx context.Context) (*service.Service, error) {
-	alias, err := a.store.ResolveAlias(a.account)
+	s, closeFn, err := a.openAccount(ctx, a.account)
 	if err != nil {
 		return nil, err
+	}
+	if closeFn != nil {
+		a.closers = append(a.closers, closerFunc(closeFn))
+	}
+	return s, nil
+}
+
+// openAccount is open for one alias ("" = the default account). The caller
+// runs closeFn, when not nil, once done with the service. The policy is read
+// on every call, so edits take effect at once.
+func (a *app) openAccount(ctx context.Context, account string) (*service.Service, func() error, error) {
+	alias, err := a.store.ResolveAlias(account)
+	if err != nil {
+		return nil, nil, err
 	}
 	acct, err := a.store.LoadAccount(alias)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	pol, err := a.loadPolicy()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p, err := a.openProvider(ctx, acct, pol.EffectiveMode(acct.Mode))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	var closeFn func() error
 	if c, ok := p.(io.Closer); ok {
-		a.closers = append(a.closers, c)
+		closeFn = c.Close
 	}
 	return &service.Service{
 		Account:  acct,
@@ -220,8 +236,12 @@ func (a *app) open(ctx context.Context) (*service.Service, error) {
 		Audit:    audit.New(a.stateDir),
 		StateDir: a.stateDir,
 		DryRun:   a.dryRun,
-	}, nil
+	}, closeFn, nil
 }
+
+type closerFunc func() error
+
+func (f closerFunc) Close() error { return f() }
 
 func (a *app) openProvider(_ context.Context, acct *auth.Account, mode policy.Mode) (provider.Provider, error) {
 	switch acct.Provider {

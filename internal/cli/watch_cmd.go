@@ -141,7 +141,7 @@ func (a *app) runWatch(ctx context.Context, f watchFlags) error {
 				return errs.Usage("--notify-token-env: $%s is empty or unset", f.notifyEnv)
 			}
 		case f.notifyFile != "":
-			if token, err = readTokenFile(f.notifyFile, "EMAIL_WATCH_NOTIFY_TOKEN"); err != nil {
+			if token, err = readTokenFile("notify-token-file", f.notifyFile, "EMAIL_WATCH_NOTIFY_TOKEN"); err != nil {
 				return err
 			}
 		}
@@ -302,10 +302,10 @@ var envLine = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*=`)
 
 // readTokenFile reads a token from a file that holds either the token alone
 // or KEY=VALUE lines (a systemd EnvironmentFile), taking the value of key.
-func readTokenFile(path, key string) (string, error) {
+func readTokenFile(flag, path, key string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return "", errs.Usage("--notify-token-file: %v", err)
+		return "", errs.Usage("--%s: %v", flag, err)
 	}
 	var lines []string
 	for _, l := range strings.Split(string(b), "\n") {
@@ -328,5 +328,5 @@ func readTokenFile(path, key string) (string, error) {
 	if len(lines) == 1 && !envLine.MatchString(lines[0]) {
 		return lines[0], nil
 	}
-	return "", errs.Usage("--notify-token-file %s: no %s=… line and not a bare token", path, key)
+	return "", errs.Usage("--%s %s: no %s=… line and not a bare token", flag, path, key)
 }

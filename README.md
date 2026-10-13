@@ -116,6 +116,10 @@ It then prints the config.yaml snippet to merge by hand. On Kubernetes, the Helm
 
 The skill alone, for any agent that reads `SKILL.md` files: `email hermes skill`.
 
+## MCP
+
+`email mcp` serves the same operations as MCP tools (`list`, `search`, `get`, `thread`, `draft_reply`, `send`, …), over stdio or Streamable HTTP with a bearer token. Same policy, audit log and body fencing as the CLI. Claude Code: `claude mcp add email -- email mcp`. Hermes, Claude Code and HTTP setups: [docs/mcp.md](docs/mcp.md).
+
 ## Development
 
 ```sh

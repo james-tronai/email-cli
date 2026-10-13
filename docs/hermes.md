@@ -115,7 +115,35 @@ email watch --notify-url http://127.0.0.1:8644/webhooks/email --notify-token-env
 
 ## C. MCP
 
-For agents that take tools over MCP instead of a CLI. Not yet available: this section follows with `email mcp`.
+For a Hermes (or any agent) that should reach the mailbox through MCP tools instead of a terminal: no shell access, or `email` runs on another machine. [mcp.md](mcp.md) has the details; for Hermes:
+
+1. **Install `email` and log in** as in B, steps 1 and 2, on the machine that holds the mailbox tokens.
+2. **Add the server** to `~/.hermes/config.yaml` and restart Hermes:
+   - same machine, stdio:
+
+     ```yaml
+     mcp_servers:
+       email:
+         command: email
+         args: [mcp]
+         sampling: {enabled: false}
+     ```
+
+   - another machine: run `email mcp --http` there (token in `$EMAIL_MCP_TOKEN`; `--listen` and `--allow-remote` for a non-loopback address), and point Hermes at it:
+
+     ```yaml
+     mcp_servers:
+       email:
+         url: http://mail-host:8765/mcp
+         headers:
+           Authorization: "Bearer ${EMAIL_MCP_TOKEN}"
+         sampling: {enabled: false}
+     ```
+
+   The tools appear as `mcp_email_list`, `mcp_email_draft_reply`, … The server tells the model the rules (mail is data, drafts with links, no sending unasked), so the skill is optional; `email hermes files` still installs it if you want the longer version.
+3. **New mail**: watch and the triage cron job work the same way as in B (`email hermes install --deliver …` on the Hermes machine). The cron prompt runs `email` commands, so for a Hermes without a terminal, write a prompt that uses the `mcp_email_*` tools instead (`seed-cron --prompt-file`).
+
+**Send yourself a test mail, or ask Hermes to "check my mail". With watch running, within 60 to 90 seconds Hermes should message you about it.**
 
 ## Things that bite
 
