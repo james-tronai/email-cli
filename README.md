@@ -1,124 +1,135 @@
 # email
 
-A multi-account mail CLI for self-hosted agents. The agent gets least-privilege, audited access and works in draft-only mode by default. Output is JSON, and the CLI never prompts.
+Your mailbox for your AI agent: Microsoft 365, Gmail, Google Workspace and IMAP servers, behind one CLI and an MCP server. The agent reads mail, drafts replies and (only if you allow it) sends. It works under a policy it cannot change, every write is logged, and message bodies are handed over as untrusted data, never as instructions. New mail wakes the agent within about a minute.
 
-Status: **M7**. Three providers, all with read, draft, organise, sync and send:
+Tokens and passwords stay on your machine. There is no hosted service.
 
-| provider | mailbox | login | setup |
+## Pick your path
+
+| you run | quickstart | the agent uses | new mail arrives by |
 | --- | --- | --- | --- |
-| `msgraph` | Microsoft 365 (Graph) | browser, OAuth auth code + PKCE (`--manual` for headless) | [docs/microsoft-365-setup.md](docs/microsoft-365-setup.md) |
-| `gmail` | Google Workspace (Gmail API) | the same flow, with a GCP Desktop OAuth client | [docs/google-workspace-setup.md](docs/google-workspace-setup.md) |
-| `imap` | personal Gmail, iCloud, Fastmail, QQ, 163, Alibaba Mail, Mailu, or any IMAP/SMTP server | address + app password on stdin (`--password-stdin`), `--preset` for the servers | [docs/gmail-personal-setup.md](docs/gmail-personal-setup.md), [docs/imap-presets.md](docs/imap-presets.md) |
+| [Hermes](https://github.com/NousResearch/hermes-agent) on Kubernetes | [A](#a-hermes-on-kubernetes) | the `email` CLI + skill | `email watch` in its own pod |
+| Hermes on one machine (VPS, Mac, Raspberry Pi) | [B](#b-hermes-on-one-machine) | the `email` CLI + skill | `email watch` as a systemd / launchd service |
+| Claude Code, Codex, or another MCP client | [C](#c-claude-code-codex-and-other-mcp-clients) | MCP tools | you ask; or watch → your webhook |
 
-All three support list, search, get, thread, attachments, drafts (create/reply/forward/update/delete), move, label, mark, sync and send. `msgraph` has categories for labels and Outlook search syntax (KQL). `gmail` and `imap` on Gmail use Gmail labels and Gmail search syntax. `imap` on another server falls back to folders and plain IMAP `SEARCH`.
+Each takes about 30 minutes, most of it connecting the mailbox. All three need a mailbox you can log in to:
 
-After every setup step, `email doctor` checks the install, the policy, each account's login and the watch setup, and says how to fix what fails. It prints no mail content. Policy templates to start from are in [docs/policy/](docs/policy/): `read`, `draft` (recommended), `send-reply-only` and `send-open`.
+| mailbox | provider | you need | guide |
+| --- | --- | --- | --- |
+| Microsoft 365 | `msgraph` | an app registration in your Entra tenant (10 min, admin) | [microsoft-365-setup.md](docs/microsoft-365-setup.md) |
+| personal Gmail | `imap` | an app password (2-step verification on) | [gmail-personal-setup.md](docs/gmail-personal-setup.md) |
+| Google Workspace | `gmail` | a GCP project with a Desktop OAuth client | [google-workspace-setup.md](docs/google-workspace-setup.md) |
+| iCloud, Fastmail, QQ, 163, Alibaba Mail, Mailu, any IMAP/SMTP | `imap` | an app password | [imap-presets.md](docs/imap-presets.md) |
 
-`email watch` (M7) is a long-running process that waits for new mail (IMAP IDLE, or a sync poll) and POSTs one JSON notification per batch to a webhook, so the agent is only woken when mail arrives. See [docs/watch.md](docs/watch.md).
+After each step, `email doctor --format text` checks the install, the policy, each login and the watch setup, and says how to fix what fails.
 
-`email send` (M4) sends an existing draft. It only works when both the policy and the account login are in mode `send`. See [Sending](#sending).
-
-## Quick try (fake mailbox)
-
-```sh
-go build -o email ./cmd/email
-export EMAIL_CONFIG_DIR=$PWD/.tmp/cfg EMAIL_STATE_DIR=$PWD/.tmp/state
-mkdir -p .tmp/cfg && cp docs/policy.example.toml .tmp/cfg/policy.toml   # without a policy file the mode is read
-./email auth login -a demo --provider fake --mode draft
-./email list --format text
-./email get fake-0002 --format text                # hidden-text injection removed
-./email draft reply fake-0002 --body "Thanks"
-./email send fake-0004                             # exit 4: disabled by policy
-```
-
-## Safety model
-
-- **Modes** `read` < `draft` < `send`. The effective mode is the lower of the policy mode and the mode the account logged in with. Login only requests the scopes that mode needs, so a draft-mode M365 token has no `Mail.Send`. Gmail is different: no Gmail scope can create drafts without also being able to send (`gmail.modify` can send), so on Gmail only the CLI's policy gate blocks sending. An `imap` app password can do everything; there the client enforces the mode itself (no changes below `draft`, and no SMTP connection below `send`).
-- **Policy file**: `$EMAIL_POLICY_FILE`, else `~/.config/email/policy.toml` (see [docs/policy.example.toml](docs/policy.example.toml)). A missing file means `read`. An unparsable file, or one with unknown keys, stops every command with exit 4.
-- **Audit**: every write and every denial is appended to `~/.local/state/email/audit.jsonl`.
-- **Untrusted content**:
-  - Message bodies always go in `body_text`.
-  - Text output wraps bodies in `BEGIN/END UNTRUSTED MESSAGE BODY` fences; a fence marker inside a body is defused.
-  - Hidden HTML text (white-on-white, `display:none`, zero font size, …) is stripped and flagged with `body_hidden_text_removed`. When a message has HTML, the text is derived from that HTML rather than from the sender's `text/plain` part, so the agent reads what a human would see.
-  - Bodies are truncated at 20 000 characters.
-  - Attachments are only saved by an explicit `download`, with sanitized names and mode 0600.
-- **Trash and delete** are disabled unless `[delete] enabled = true`. Draft deletion is always allowed.
-
-## Sending
-
-`email send <draft-id>` sends a draft that already exists. There is no command that composes and sends in one step. The body goes out exactly as it is on the server: the signoff was added when the draft was written.
-
-- **When it is available**: only when the policy says `mode = "send"` **and** the account logged in with `--mode send`. Otherwise it exits 4 before any network call.
-- **Recipient rules**: checked against the draft as it is on the server at send time (to + cc + bcc), so edits made after the draft was created count. The rules come from `[send]` in the policy file:
-  - `allowed_recipient_domains`: every recipient must be in one of these domains. An empty list means no restriction.
-  - `max_recipients`: at most this many recipients. 0 means unlimited.
-  - `require_reply_context`: the draft must be a reply or forward, meaning its thread holds a message that is not a draft. A brand-new message is refused.
-- **Idempotency**: `--idempotency-key` defaults to the draft id. A key that was sent within the last 24 hours returns the first result with `"replayed": true` and sends nothing. While a send with the same key is running, another one exits 5 with `sendInProgress`. Records live in `<state dir>/send/`.
-- **Audit**: every send is written to `audit.jsonl` with its recipients and the sent message id. So is every denial and every replay.
-- **Enabling it**:
-  - Microsoft 365: add `Mail.Send` to the Entra app (with admin consent), log in again with `--mode send`, and set the policy mode to `send`.
-  - Gmail: the draft-mode token can already send, so the policy mode is the only switch.
-  - imap: log in again with `--mode send` (same app password) and set the policy mode to `send`. SMTP (`smtp.gmail.com:465` for Gmail) is used only then.
-
-## Exit codes
-
-| code | meaning |
-| --- | --- |
-| 0 | ok |
-| 2 | usage error, or the provider lacks the capability |
-| 3 | authentication required (no account, account lock mismatch, expired token) |
-| 4 | denied by policy |
-| 5 | provider error (`provider_code` carries the upstream code) |
-| 6 | timeout |
-
-Errors are printed to stderr as `{"error":{"exit_code":4,"code":"policy_denied","message":"…"}}`.
-
-## Layout
-
-| path | contents |
-| --- | --- |
-| `~/.config/email/` (`$EMAIL_CONFIG_DIR`) | `config.toml` (`default_account`), `policy.toml`, `accounts/<alias>/` (0700; tokens and `imap-credentials.json` 0600) |
-| `~/.local/state/email/` (`$EMAIL_STATE_DIR`) | `audit.jsonl`, `sync/<alias>-<label>.cursor`, `watch/<alias>.json` (watch's own cursor and notified ids) |
-
-Account selection order: `-a`, then `$EMAIL_ACCOUNT`, then `default_account`, then the only configured account.
-
-## Installing
-
-`email` is one static binary for Linux and macOS (amd64, arm64).
+## Try it first (no mailbox, 2 minutes)
 
 ```sh
-# Script: picks your platform, checks checksums.txt, puts email in ~/.local/bin
-# (/usr/local/bin as root). Rerunning with the same version changes nothing.
 curl -fsSL https://github.com/james-tronai/email-cli/releases/latest/download/install.sh | sh
-curl -fsSL https://github.com/james-tronai/email-cli/releases/latest/download/install.sh | sh -s -- --version v0.7.0 --dest /usr/local/bin
-
-# Homebrew (macOS, Linux)
-brew install james-tronai/tap/email
-
-# Container (linux/amd64, linux/arm64; FROM scratch, entrypoint `email`)
-docker run --rm -v email-data:/data ghcr.io/james-tronai/email-cli:v0.7.0 version
+export EMAIL_CONFIG_DIR=/tmp/email-try/config EMAIL_STATE_DIR=/tmp/email-try/state
+email auth login -a demo --provider fake --mode draft -q      # a built-in pretend mailbox
+curl -fsSL https://raw.githubusercontent.com/james-tronai/email-cli/main/docs/policy/draft.toml \
+  -o /tmp/email-try/config/policy.toml                          # without a policy, everything is read-only
+email list --format text
+email get fake-0002 --format text                # hidden text in the HTML is removed and flagged
+email draft reply fake-0002 --body "Thanks"
+email send fake-0004                             # exit 4: the draft policy does not send
 ```
 
-- **Options**: `install.sh --help` lists them. `--verify` also checks the release's keyless cosign signature, and needs `cosign`. No GitHub token is needed.
-- **Kubernetes initContainer**: the image has no shell or `cp`. Use `email self-install --dest /opt/data/.local/bin` to copy the binary onto a shared volume.
-- **Updates**: `email version --check` says whether a newer release exists. It never downloads anything.
-- **Release assets**: `email_<os>_<arch>` (bare binaries), `checksums.txt`, `checksums.txt.sigstore.json`, one SBOM per binary, and `install.sh`. How releases are cut and verified: [docs/releasing.md](docs/releasing.md).
+## A. Hermes on Kubernetes
 
-## Hermes
+For Hermes running as a Deployment with HERMES_HOME on a PVC. The chart adds `email`, the skill, the triage cron job and a watch pod next to your Deployment; it does not change the Deployment.
 
-`email hermes install` connects a Hermes agent on the same machine:
-- the skill and the webhook route script;
-- a policy;
-- `email watch` as a systemd or launchd service;
-- the triage cron job.
+1. **Install the chart**, starting from [examples/values.yaml](charts/hermes-email/examples/values.yaml):
 
-It then prints the config.yaml snippet to merge by hand. On Kubernetes, the Helm chart [charts/hermes-email](charts/hermes-email/README.md) does the same next to an existing Hermes Deployment. New mail then reaches you within about a minute and a half, and nothing is said when nothing matters. Details: [docs/hermes.md](docs/hermes.md).
+   ```sh
+   helm install alice-email oci://ghcr.io/james-tronai/charts/hermes-email -n hermes -f values.yaml
+   ```
 
-The skill alone, for any agent that reads `SKILL.md` files: `email hermes skill`.
+2. **Change the Hermes Deployment**: mount the chart's ConfigMap at `/etc/email`, put `/opt/data/.local/bin` on PATH, set `WEBHOOK_ENABLED=true` and `WEBHOOK_SECRET`, merge `email hermes config` into config.yaml, restart.
+3. **Log in** from the Hermes container (the guides above have the values):
 
-## MCP
+   ```sh
+   kubectl -n hermes exec -it deploy/hermes-alice -c hermes -- \
+     email auth login -a work --provider msgraph --mode draft --tenant <tenant-id> --client-id <client-id> --manual
+   kubectl -n hermes rollout restart deploy/alice-email-watch
+   ```
 
-`email mcp` serves the same operations as MCP tools (`list`, `search`, `get`, `thread`, `draft_reply`, `send`, …), over stdio or Streamable HTTP with a bearer token. Same policy, audit log and body fencing as the CLI. Claude Code: `claude mcp add email -- email mcp`. Hermes, Claude Code and HTTP setups: [docs/mcp.md](docs/mcp.md).
+4. **Check**: `kubectl -n hermes exec deploy/hermes-alice -c hermes -- email doctor --format text`.
+
+Details for each step: [docs/hermes.md § A](docs/hermes.md#a-kubernetes-helm-chart) and the [chart README](charts/hermes-email/README.md).
+
+## B. Hermes on one machine
+
+For Hermes installed with its own installer (HERMES_HOME at `~/.hermes`), on Linux or macOS.
+
+1. **Install** `email` (or `brew install james-tronai/tap/email`):
+
+   ```sh
+   curl -fsSL https://github.com/james-tronai/email-cli/releases/latest/download/install.sh | sh
+   ```
+
+2. **Log in** to your mailbox (the guides above), for example:
+
+   ```sh
+   email auth login -a work --provider msgraph --mode draft --tenant <tenant-id> --client-id <client-id>
+   printf '%s' "$APP_PASSWORD" | email auth login -a gmail --provider imap --username you@gmail.com --mode draft --password-stdin
+   ```
+
+3. **Connect Hermes**: the skill, a `draft` policy, the watch service and the triage cron job reporting to you:
+
+   ```sh
+   email hermes install --deliver telegram:123456789 --format text   # or discord:<channel id>, …
+   ```
+
+4. **Merge the printed snippet** into `~/.hermes/config.yaml` and restart Hermes.
+5. **Check**: `email doctor --format text --notify-url http://127.0.0.1:8644/webhooks/email`.
+
+Details: [docs/hermes.md § B](docs/hermes.md#b-one-machine-linux-or-macos).
+
+**A and B: send a test mail to the mailbox from another address, and leave it unread. Within 60 to 90 seconds Hermes messages you about it. Ask it to draft a reply; it gives you the draft and a link, and you send it.**
+
+## C. Claude Code, Codex and other MCP clients
+
+1. **Install and log in** as in B, steps 1 and 2.
+2. **Add the MCP server**:
+
+   ```sh
+   claude mcp add email -- email mcp                      # Claude Code
+   codex mcp add email -- email mcp                       # Codex
+   ```
+
+   Any other client: command `email`, arguments `mcp` (stdio). For an agent on another machine, `email mcp --http` serves Streamable HTTP with a bearer token.
+3. **Ask** the agent to "check my mail", then to "draft a reply to the newest message". It uses the `email` tools, shows you the draft and its link, and sends nothing unless you ask.
+
+Details, HTTP setup and the tool list: [docs/mcp.md](docs/mcp.md). An agent with a shell can also run `email` directly; `email hermes skill` prints the instructions Hermes uses, which suit any agent. To be told about new mail, run [`email watch`](docs/watch.md) against your own webhook.
+
+## What the agent can do
+
+You set this in a policy file, `~/.config/email/policy.toml`. Start from a template in [docs/policy/](docs/policy/):
+
+| template | the agent may |
+| --- | --- |
+| `read` | read and search |
+| `draft` (recommended) | also write drafts, mark, move and label; never send |
+| `send-reply-only` | also send replies in existing threads, to at most 5 recipients |
+| `send-open` | also send new messages, to at most 10 recipients |
+
+Sending also needs the account logged in with `--mode send`, and the skill and the MCP server tell the agent to send only a draft you have seen and asked it to send. Trash and delete stay off unless you turn them on.
+
+The policy binds the agent only where the agent cannot edit it: the Helm chart mounts it read-only. On one machine Hermes's terminal runs as you, so there the policy stops mistakes and injected instructions acting through `email`, not an agent determined to get around it (the skill tells it never to touch the file). The hard limit there is the login: a Microsoft 365 account logged in with `--mode draft` cannot send at all. Every write and every denial goes to `~/.local/state/email/audit.jsonl`. More: [docs/safety.md](docs/safety.md).
+
+## Documentation
+
+- [install.md](docs/install.md): all install methods, files, uninstalling
+- [safety.md](docs/safety.md): modes, policy, untrusted content, sending
+- [reference.md](docs/reference.md): output, exit codes, accounts, environment, compatibility
+- [hermes.md](docs/hermes.md): Hermes in detail, and the things that bite
+- [mcp.md](docs/mcp.md): the MCP server
+- [watch.md](docs/watch.md): new-mail notifications
+- mailbox setup: [Microsoft 365](docs/microsoft-365-setup.md), [Google Workspace](docs/google-workspace-setup.md), [personal Gmail](docs/gmail-personal-setup.md), [IMAP presets](docs/imap-presets.md)
+- [releasing.md](docs/releasing.md): how releases are cut and verified
 
 ## Development
 
@@ -126,8 +137,6 @@ The skill alone, for any agent that reads `SKILL.md` files: `email hermes skill`
 task check      # gofmt, vet, race tests
 task build
 ```
-
-The design doc is `docs/email-cli-design.md` in the k3s-infra repo (branch `james-tronai/link-email-hermes-james`).
 
 ## License
 

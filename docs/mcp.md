@@ -63,6 +63,16 @@ The client starts `email mcp` itself and talks on stdin/stdout. Logs (JSON, neve
 }
 ```
 
+**Codex**: `codex mcp add email -- email mcp`, or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.email]
+command = "email"
+args = ["mcp"]
+```
+
+Codex, like Hermes, starts the server with a reduced environment: if you use `EMAIL_CONFIG_DIR`, `EMAIL_STATE_DIR` or `EMAIL_POLICY_FILE`, repeat them in `env = { … }`.
+
 **Hermes**: `config.yaml`:
 
 ```yaml

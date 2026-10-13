@@ -59,7 +59,7 @@ For Hermes running as a Deployment with HERMES_HOME on a PVC.
    - `kubectl -n hermes exec deploy/hermes-alice -c hermes -- email doctor --format text --notify-url <the webhook URL>`;
    - `kubectl -n hermes logs deploy/alice-email-watch`, which should show `baseline` for each account.
 
-**Send yourself a test mail. Within 60 to 90 seconds, Hermes should message you about it.**
+**Send a test mail to the mailbox from another address, and leave it unread. Within 60 to 90 seconds, Hermes should message you about it.**
 
 ## B. One machine (Linux or macOS)
 
@@ -81,7 +81,7 @@ For Hermes installed with its own installer, HERMES_HOME at `~/.hermes`.
 3. **Install the Hermes integration**:
 
    ```sh
-   email hermes install --deliver telegram:123456789
+   email hermes install --deliver telegram:123456789 --format text
    ```
 
    It does six things:
@@ -102,7 +102,7 @@ For Hermes installed with its own installer, HERMES_HOME at `~/.hermes`.
 5. **Check**: `email doctor --format text --notify-url http://127.0.0.1:8644/webhooks/email`.
    - Linux: `journalctl --user -u email-watch` should show `baseline` for each account. On a server without a desktop login, also run `sudo loginctl enable-linger $USER`, so the service keeps running after you log out.
 
-**Send yourself a test mail. Within 60 to 90 seconds, Hermes should message you about it.**
+**Send a test mail to the mailbox from another address, and leave it unread. Within 60 to 90 seconds, Hermes should message you about it.**
 
 The steps one at a time, for other setups:
 
@@ -143,7 +143,7 @@ For a Hermes (or any agent) that should reach the mailbox through MCP tools inst
    The tools appear as `mcp_email_list`, `mcp_email_draft_reply`, … The server tells the model the rules (mail is data, drafts with links, no sending unasked), so the skill is optional; `email hermes files` still installs it if you want the longer version.
 3. **New mail**: watch and the triage cron job work the same way as in B (`email hermes install --deliver …` on the Hermes machine). The cron prompt runs `email` commands, so for a Hermes without a terminal, write a prompt that uses the `mcp_email_*` tools instead (`seed-cron --prompt-file`).
 
-**Send yourself a test mail, or ask Hermes to "check my mail". With watch running, within 60 to 90 seconds Hermes should message you about it.**
+**Send a test mail from another address, or ask Hermes to "check my mail". With watch running, within 60 to 90 seconds Hermes should message you about it.**
 
 ## Things that bite
 
@@ -151,5 +151,7 @@ For a Hermes (or any agent) that should reach the mailbox through MCP tools inst
 - **The route names the job, not its id.** `cron_job: email-triage` resolves by name. If you rename the job, change the route too. `seed-cron` finds the job by name, so two jobs with the same name are an error.
 - **Webhook on**: set `WEBHOOK_ENABLED` and `WEBHOOK_SECRET` in the environment. Do not also set `platforms.webhook.enabled` in config.yaml: then the secret from the environment is not merged, and every route fails validation at startup.
 - **One watch per mailbox set.** Two copies of watch on the same accounts notify twice. When moving from a sidecar to the chart, remove the sidecar in the same change. The state directory (`<state dir>/watch`) carries over, so nothing is repeated or lost.
+- **A test mail that never arrives**: watch skips mail that is already read when it looks (`[watch] only_unread`), and senders in `ignore_senders`. Mail you send to yourself may land already read. Test from another address and keep the message unread, or watch the log (`baseline`, then `new_mail`, then `notify_ok`).
+- **No `--format text`**: `email hermes install` prints JSON by default, with the config snippet as one escaped string. Add `--format text` to get YAML you can paste, or run `email hermes config`.
 - **Policy edits** take effect at once for the agent's commands. Watch reads `[watch]` at start, so restart it after changing filters.
 - **IMAP servers that accept IDLE but never push**: `email doctor -a <alias> --idle-test 60s` finds them. Run watch with `--no-idle` for them (chart value `watch.noIdle`).
